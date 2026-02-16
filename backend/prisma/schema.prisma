@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  FAN
+  ARTIST
+  ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  role         Role
+  createdAt    DateTime @default(now())
+  streams      Stream[] @relation("ArtistStreams")
+  attendances  Attendance[]
+  bids         Bid[]
+  orders       Order[]
+  wallets      Wallet[]
+}
+
+model Stream {
+  id          String       @id @default(cuid())
+  artistId    String
+  artist      User         @relation("ArtistStreams", fields: [artistId], references: [id])
+  title       String
+  startedAt   DateTime
+  endedAt     DateTime?
+  attendances Attendance[]
+  bids        Bid[]
+}
+
+model Attendance {
+  id        String   @id @default(cuid())
+  userId    String
+  streamId  String
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  stream    Stream   @relation(fields: [streamId], references: [id])
+
+  @@unique([userId, streamId])
+}
+
+model TierProgress {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  attendance Int      @default(0)
+  spendUsd   Decimal  @db.Decimal(10, 2)
+  tier       Int      @default(0)
+  updatedAt  DateTime @updatedAt
+}
+
+model Product {
+  id         String   @id @default(cuid())
+  artistId   String
+  name       String
+  priceUsd   Decimal  @db.Decimal(10, 2)
+  tokenPrice Int?
+  inventory  Int
+}
+
+model Bid {
+  id        String   @id @default(cuid())
+  streamId  String
+  userId    String
+  amountUsd Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  stream    Stream   @relation(fields: [streamId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  userId     String
+  productId  String
+  amountUsd  Decimal     @db.Decimal(10, 2)
+  feeUsd     Decimal     @db.Decimal(10, 2)
+  status     OrderStatus
+  createdAt  DateTime    @default(now())
+  user       User        @relation(fields: [userId], references: [id])
+}
+
+model Wallet {
+  id            String   @id @default(cuid())
+  userId        String
+  chain         String
+  address       String
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id])
+  nftCollectibles NftCollectible[]
+}
+
+model NftCollectible {
+  id         String   @id @default(cuid())
+  walletId   String
+  tokenId    String
+  contract   String
+  metadataUri String
+  mintedAt   DateTime @default(now())
+  wallet     Wallet   @relation(fields: [walletId], references: [id])
+
+  @@unique([contract, tokenId])
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  code      String
+  payload   Json?
+  createdAt DateTime @default(now())
+}
