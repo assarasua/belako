@@ -1,6 +1,7 @@
-import { WebSocketServer } from 'ws';
+import type { Server as HttpServer } from 'node:http';
+import { WebSocket, WebSocketServer } from 'ws';
 
-export function attachChatServer(server: Parameters<WebSocketServer['constructor']>[0]) {
+export function attachChatServer(server: HttpServer) {
   const wss = new WebSocketServer({ server, path: '/realtime/chat' });
 
   wss.on('connection', (socket) => {
@@ -9,7 +10,7 @@ export function attachChatServer(server: Parameters<WebSocketServer['constructor
     socket.on('message', (raw) => {
       const text = String(raw);
       for (const client of wss.clients) {
-        if (client.readyState === client.OPEN) {
+        if (client.readyState === WebSocket.OPEN) {
           client.send(JSON.stringify({ type: 'chat', message: text }));
         }
       }
