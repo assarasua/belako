@@ -1,8 +1,8 @@
 export type Role = 'fan' | 'artist';
-export type FanTab = 'home' | 'live' | 'rewards' | 'profile';
+export type FanTab = 'home' | 'live' | 'store' | 'rewards' | 'profile';
 export type ArtistTab = 'dashboard' | 'golive' | 'orders' | 'fans' | 'profile';
 export type LiveState = 'live' | 'reconnecting' | 'ended';
-export type SheetState = 'none' | 'auction' | 'checkout' | 'reward';
+export type SheetState = 'none' | 'checkout' | 'reward';
 
 export type Stream = {
   id: string;

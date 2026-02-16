@@ -13,9 +13,9 @@ export const streams: Stream[] = [
   {
     id: 's2',
     artist: 'Belako',
-    title: 'Ensayo abierto + pujas de shoutout',
+    title: 'Ensayo abierto acústico',
     viewers: 954,
-    rewardHint: 'Subasta de shoutout cada 3 min',
+    rewardHint: 'Mira completo para boost de fidelidad',
     genre: 'Indie rock',
     colorClass: 'stream-b'
   },
@@ -27,6 +27,51 @@ export const streams: Stream[] = [
     rewardHint: 'Nivel 1 se desbloquea con 3 asistencias',
     genre: 'Rock alternativo',
     colorClass: 'stream-c'
+  },
+  {
+    id: 's4',
+    artist: 'Belako',
+    title: 'Session nocturna: post-punk set',
+    viewers: 1660,
+    rewardHint: 'Completa 1 minuto y suma +5 BEL',
+    genre: 'Post-punk',
+    colorClass: 'stream-a'
+  },
+  {
+    id: 's5',
+    artist: 'Belako',
+    title: 'Backstage stories + Q&A',
+    viewers: 1130,
+    rewardHint: 'Interactúa en chat para ganar presencia',
+    genre: 'Alternative',
+    colorClass: 'stream-b'
+  },
+  {
+    id: 's6',
+    artist: 'Belako',
+    title: 'Belako en vivo: set completo',
+    viewers: 2795,
+    rewardHint: 'Directo largo para acelerar progreso',
+    genre: 'Live set',
+    colorClass: 'stream-c'
+  },
+  {
+    id: 's7',
+    artist: 'Belako',
+    title: 'Pre-show de gira: warm-up',
+    viewers: 1422,
+    rewardHint: 'Asiste hoy y desbloquea hitos antes',
+    genre: 'Indie rock',
+    colorClass: 'stream-a'
+  },
+  {
+    id: 's8',
+    artist: 'Belako',
+    title: 'Aftershow íntimo para superfans',
+    viewers: 890,
+    rewardHint: 'Más directos vistos -> más BEL y tiers',
+    genre: 'Acoustic',
+    colorClass: 'stream-b'
   }
 ];
 

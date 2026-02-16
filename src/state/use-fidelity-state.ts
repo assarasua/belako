@@ -51,9 +51,10 @@ export function useFidelityState() {
   const [attendanceCount, setAttendanceCount] = useState(1);
   const [spend, setSpend] = useState(20);
   const [belakoCoins, setBelakoCoins] = useState(40);
-  const [bidValue, setBidValue] = useState(20);
   const [selectedProduct, setSelectedProduct] = useState<Product>(products[0]);
   const [claimedTierIds, setClaimedTierIds] = useState<number[]>([]);
+  const [fullyWatchedStreamIds, setFullyWatchedStreamIds] = useState<string[]>([]);
+  const [fullLiveRewardClaimed, setFullLiveRewardClaimed] = useState(false);
   const [statusText, setStatusText] = useState('');
 
   const [checkoutForm, setCheckoutForm] = useState<CheckoutForm>(defaultCheckoutForm);
@@ -182,6 +183,8 @@ export function useFidelityState() {
   }, [attendanceCount, tiers]);
 
   const canUseCoinDiscount = belakoCoins >= coinPolicy.discountCost;
+  const currentStreamFullyWatched = fullyWatchedStreamIds.includes(activeStream.id);
+  const fullLiveRewardUnlocked = fullyWatchedStreamIds.length > 0;
 
   function completeOnboarding() {
     const next = onboardingStep + 1;
@@ -204,11 +207,35 @@ export function useFidelityState() {
     pushHistory({ label: `+${coinPolicy.watchReward} BEL por asistencia`, type: 'coin' });
   }
 
-  function placeBid() {
-    const nextBid = bidValue + 5;
-    setBidValue(nextBid);
-    setStatusText(`Puja realizada en €${nextBid}.`);
-    track('EVT_bid_placed', `Puja subida a €${nextBid}`);
+  function watchFullLive() {
+    if (currentStreamFullyWatched) {
+      setStatusText('Ya has completado este directo.');
+      return;
+    }
+    setFullyWatchedStreamIds((prev) => [...prev, activeStream.id]);
+    setAttendanceCount((n) => n + 1);
+    setStatusText('Directo completo visto. Recompensa especial desbloqueada.');
+    track('EVT_stream_full_watch', `Directo completo visto: ${activeStream.id}`);
+    notify('Recompensa desbloqueada', 'Ya puedes reclamar la recompensa por ver directo entero.');
+    pushHistory({ label: `Directo completo: ${activeStream.title}`, type: 'reward' });
+  }
+
+  function claimFullLiveReward() {
+    if (!fullLiveRewardUnlocked) {
+      setStatusText('Completa un directo entero para desbloquear esta recompensa.');
+      return;
+    }
+    if (fullLiveRewardClaimed) {
+      setStatusText('Recompensa de directo completo ya reclamada.');
+      return;
+    }
+    const fullWatchReward = 25;
+    setFullLiveRewardClaimed(true);
+    setBelakoCoins((n) => n + fullWatchReward);
+    setStatusText(`Recompensa reclamada. +${fullWatchReward} BEL.`);
+    track('EVT_full_live_reward_claimed', 'Recompensa de directo completo reclamada');
+    notify('Recompensa reclamada', `Has ganado +${fullWatchReward} BEL por ver el directo entero.`);
+    pushHistory({ label: `+${fullWatchReward} BEL por directo completo`, type: 'coin' });
   }
 
   function openCheckout(product: Product, mode: CheckoutMode = 'fiat') {
@@ -425,7 +452,9 @@ export function useFidelityState() {
     attendanceCount,
     spend,
     belakoCoins,
-    bidValue,
+    currentStreamFullyWatched,
+    fullLiveRewardUnlocked,
+    fullLiveRewardClaimed,
     selectedProduct,
     claimedTierIds,
     statusText,
@@ -451,7 +480,8 @@ export function useFidelityState() {
     markNftImageError,
     completeOnboarding,
     watchMinute,
-    placeBid,
+    watchFullLive,
+    claimFullLiveReward,
     openCheckout,
     updateCheckoutField,
     toggleCoinDiscount,

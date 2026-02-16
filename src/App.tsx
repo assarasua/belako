@@ -8,28 +8,41 @@ export default function App() {
   const model = useFidelityState();
   const viewKey = model.fanTab;
   const showPreEntry = !model.onboardingDone;
+  const tabTitle: Record<typeof model.fanTab, string> = {
+    home: 'Descubrir',
+    live: 'Live Show',
+    store: 'Tienda',
+    rewards: 'Recompensas',
+    profile: 'Perfil'
+  };
+  const onboardingProgress = ((model.onboardingStep + 1) / 3) * 100;
+  const topbarTitle = showPreEntry ? 'Belako SuperFan App' : tabTitle[model.fanTab];
+  const topbarSubtitle = showPreEntry ? 'Pre-Onboarding' : 'Belako Editorial Experience';
 
   return (
     <div className="app-shell">
-      <TopBar />
+      <TopBar title={topbarTitle} subtitle={topbarSubtitle} coins={model.belakoCoins} />
 
       <main className="phone-frame">
         {showPreEntry ? (
           <section className="pre-entry" aria-label="Onboarding previo">
             <p className="badge">WELCOME</p>
-            <h2>Belako SuperFan App</h2>
-            <p className="hint">Antes de entrar, completa 3 pasos rápidos.</p>
+            <h2>Diseña tu experiencia fan</h2>
+            <p className="hint">Completa 3 pasos y entra directo al universo Belako.</p>
+            <div className="progress-track" aria-hidden="true">
+              <div className="progress-fill" style={{ width: `${onboardingProgress}%` }} />
+            </div>
             <ol className="pre-entry-steps">
               <li className={model.onboardingStep >= 0 ? 'done' : ''}>Personaliza tu experiencia</li>
               <li className={model.onboardingStep >= 1 ? 'done' : ''}>Activa recompensas Belako Coin</li>
               <li className={model.onboardingStep >= 2 ? 'done' : ''}>Prepara tu primer directo</li>
             </ol>
-            <article className="metric-card">
+            <article className="metric-card onboarding-message">
               <p>{onboardingCopy(model.onboardingStep)}</p>
             </article>
-            <div className="row">
+            <div className="row onboarding-actions">
               <button onClick={model.completeOnboarding}>
-                {model.onboardingStep >= 2 ? 'Entrar a la app' : 'Siguiente paso'}
+                {model.onboardingStep >= 2 ? 'Entrar a la experiencia' : 'Continuar'}
               </button>
               <button className="ghost" onClick={() => model.setOnboardingDone(true)}>
                 Saltar

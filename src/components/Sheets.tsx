@@ -4,8 +4,6 @@ export function Sheets({ model }: { model: FidelityModel }) {
   const {
     sheet,
     selectedProduct,
-    bidValue,
-    placeBid,
     setSheet,
     payWithFiat,
     checkoutForm,
@@ -29,25 +27,14 @@ export function Sheets({ model }: { model: FidelityModel }) {
   const discount = checkoutUseCoinDiscount ? coinPolicy.discountValueEur : 0;
   const total = Number((selectedProduct.fiatPrice + serviceFee + shipping - discount).toFixed(2));
   const canRedeemWithCoins = model.belakoCoins >= selectedProduct.belakoCoinCost;
+  const fieldError = {
+    fullName: checkoutForm.fullName.trim().length > 0 && checkoutForm.fullName.trim().length < 3,
+    email: checkoutForm.email.length > 0 && !checkoutForm.email.includes('@'),
+    address: checkoutForm.address.trim().length > 0 && checkoutForm.address.trim().length < 5
+  };
 
   if (sheet === 'none') {
     return null;
-  }
-
-  if (sheet === 'auction') {
-    return (
-      <section className="sheet" role="dialog" aria-label="Subasta">
-        <h3>Subasta en directo</h3>
-        <p>{selectedProduct.name}</p>
-        <p>Puja actual: €{bidValue}</p>
-        <div className="row">
-          <button onClick={placeBid}>Subir +5</button>
-          <button className="ghost" onClick={() => setSheet('none')}>
-            Cerrar
-          </button>
-        </div>
-      </section>
-    );
   }
 
   if (sheet === 'checkout') {
@@ -56,9 +43,10 @@ export function Sheets({ model }: { model: FidelityModel }) {
         <h3>{checkoutMode === 'coin' ? 'Canje de recompensa' : 'Checkout Belako'}</h3>
         <p>{selectedProduct.name}</p>
         <p>{checkoutMode === 'coin' ? 'Canjea este item usando Belako Coin.' : 'Pago exclusivo en euros con tarjeta.'}</p>
+        <small className="checkout-trust">Pago seguro procesado por Stripe. Datos cifrados de extremo a extremo.</small>
 
         <div className="sheet-grid">
-          <label>
+          <label className={fieldError.fullName ? 'input-error' : ''}>
             Nombre y apellidos
             <input
               value={checkoutForm.fullName}
@@ -66,7 +54,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
               onChange={(e) => updateCheckoutField('fullName', e.target.value)}
             />
           </label>
-          <label>
+          <label className={fieldError.email ? 'input-error' : ''}>
             Email
             <input
               type="email"
@@ -75,7 +63,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
               onChange={(e) => updateCheckoutField('email', e.target.value)}
             />
           </label>
-          <label>
+          <label className={fieldError.address ? 'input-error' : ''}>
             Direccion
             <input
               value={checkoutForm.address}

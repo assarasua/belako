@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { products, streams } from '../../lib/mock-data';
 import type { FidelityModel } from '../../state/use-fidelity-state';
 import { liveBadgeText } from '../../state/use-fidelity-state';
@@ -14,7 +14,11 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     track,
     liveState,
     watchMinute,
-    setSheet,
+    watchFullLive,
+    claimFullLiveReward,
+    currentStreamFullyWatched,
+    fullLiveRewardUnlocked,
+    fullLiveRewardClaimed,
     openCheckout,
     toggleReconnectState,
     endStream,
@@ -35,6 +39,8 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     clearNotifications
   } = model;
   const [storeFilter, setStoreFilter] = useState<'all' | 'buy' | 'redeem'>('all');
+  const [homeFeedCount, setHomeFeedCount] = useState(6);
+  const homeSentinelRef = useRef<HTMLDivElement | null>(null);
 
   const sortedStoreProducts = useMemo(() => {
     const enriched = products.map((product) => ({
@@ -60,12 +66,73 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     });
   }, [belakoCoins, storeFilter]);
 
+  const homeFeedStreams = useMemo(() => {
+    if (streams.length === 0) {
+      return [];
+    }
+    return Array.from({ length: homeFeedCount }, (_, index) => {
+      const stream = streams[index % streams.length];
+      return {
+        stream,
+        virtualId: `${stream.id}-${index}`
+      };
+    });
+  }, [homeFeedCount]);
+
+  useEffect(() => {
+    if (fanTab !== 'home' || streams.length === 0) {
+      return;
+    }
+    const sentinel = homeSentinelRef.current;
+    if (!sentinel) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (!first?.isIntersecting) {
+          return;
+        }
+        setHomeFeedCount((prev) => prev + 4);
+      },
+      { root: null, rootMargin: '180px 0px', threshold: 0.05 }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [fanTab, homeFeedStreams.length]);
+
+  function tierProgressPercent(tierId: 1 | 2 | 3): number {
+    if (tierId === 1) {
+      return Math.min((attendanceCount / 3) * 100, 100);
+    }
+    if (tierId === 2) {
+      const attendanceProgress = Math.min((attendanceCount / 10) * 50, 50);
+      const spendProgress = Math.min((spend / 50) * 50, 50);
+      return attendanceProgress + spendProgress;
+    }
+    const attendanceProgress = Math.min((attendanceCount / 20) * 50, 50);
+    const spendProgress = Math.min((spend / 150) * 50, 50);
+    return attendanceProgress + spendProgress;
+  }
+
   if (fanTab === 'home') {
     return (
       <section className="stack">
-        <article className="guide-card">
-          <h3>Paso 1: descubre y entra a un directo</h3>
-          <p>Desliza entre shows, abre uno y gana BEL por asistencia.</p>
+        <article className={`hero-card belako-hero ${activeStream.colorClass}`}>
+          <p className="hero-kicker">BELAKO SUPERFAN</p>
+          <h2>Hoy en directo</h2>
+          <h3>{activeStream.title}</h3>
+          <p>{activeStream.rewardHint}</p>
+          <button
+            onClick={() => {
+              setFanTab('live');
+              track('EVT_stream_join', `Entró al directo de ${activeStream.artist}`);
+            }}
+          >
+            Entrar ahora
+          </button>
         </article>
 
         {streams.length === 0 ? (
@@ -76,35 +143,37 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         ) : (
           <>
             <h2>Descubrimiento</h2>
-            <article className={`stream-card ${activeStream.colorClass} live-pulse`}>
-              <div className="live-top">
-                <p className="badge">EN DIRECTO</p>
-                <span className="token-chip">{activeStream.viewers} viendo</span>
+            <div className="home-feed" aria-label="Feed infinito de directos">
+              {homeFeedStreams.map(({ stream, virtualId }) => (
+                <article key={virtualId} className={`stream-card ${stream.colorClass} live-pulse`}>
+                  <div className="live-top">
+                    <p className="badge">EN DIRECTO</p>
+                    <span className="token-chip">{stream.viewers} viendo</span>
+                  </div>
+                  <h3>{stream.artist}</h3>
+                  <p>{stream.title}</p>
+                  <small>{stream.genre}</small>
+                  <p className="hint">{stream.rewardHint}</p>
+                  <button
+                    onClick={() => {
+                      setFanTab('live');
+                      track('EVT_stream_join', `Entró al directo de ${stream.artist}`);
+                    }}
+                  >
+                    Entrar al live
+                  </button>
+                </article>
+              ))}
+              <div ref={homeSentinelRef} className="infinite-sentinel" aria-hidden="true">
+                Cargando más directos...
               </div>
-              <h3>{activeStream.artist}</h3>
-              <p>{activeStream.title}</p>
-              <small>{activeStream.genre}</small>
-              <p className="hint">{activeStream.rewardHint}</p>
-              <div className="row">
-                <button
-                  onClick={() => {
-                    setFanTab('live');
-                    track('EVT_stream_join', `Entró al directo de ${activeStream.artist}`);
-                  }}
-                >
-                  Entrar
-                </button>
-                <button className="ghost" onClick={nextStream}>
-                  Deslizar
-                </button>
-              </div>
-            </article>
+            </div>
           </>
         )}
 
         <article className="metric-card">
           <p>Resumen rapido</p>
-          <small>Belako Coin {belakoCoins} BEL | Asistencia {attendanceCount} | Gasto €{spend.toFixed(2)}</small>
+          <small>BEL {belakoCoins} | Asistencia {attendanceCount} directos | Gasto €{spend.toFixed(2)}</small>
           <small>Canje activo: -€{coinPolicy.discountValueEur} por {coinPolicy.discountCost} BEL</small>
         </article>
       </section>
@@ -115,8 +184,8 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     return (
       <section className="stack">
         <article className="guide-card">
-          <h3>Paso 2: interactúa en directo</h3>
-          <p>Mira 1 minuto para sumar BEL, participa en pujas y compra merch desde el live.</p>
+          <h3>Live mission</h3>
+          <p>Completa hitos durante el directo y compra merch sin salir del flujo.</p>
         </article>
 
         <article className={`live-room ${activeStream.colorClass}`}>
@@ -129,14 +198,17 @@ export function FanScreens({ model }: { model: FidelityModel }) {
 
           <div className="chat-box" aria-live="polite">
             <p>@ane: este drop es una locura</p>
-            <p>@iker: subid la puja +5</p>
+            <p>@iker: temazo en directo</p>
             <p>@june: insignia superfan desbloqueada</p>
           </div>
 
           <div className="row">
             <button onClick={watchMinute}>Ver 1 min (+{coinPolicy.watchReward} BEL)</button>
-            <button onClick={() => setSheet('auction')}>Abrir puja</button>
+            <button className={currentStreamFullyWatched ? 'ghost' : 'primary'} onClick={watchFullLive}>
+              {currentStreamFullyWatched ? 'Directo completo verificado' : 'Ver directo entero'}
+            </button>
           </div>
+          <small>{currentStreamFullyWatched ? 'Recompensa de directo completo desbloqueada.' : 'Ver directo entero para desbloquear recompensa.'}</small>
           <section className="live-embed" aria-label="Directo embebido de YouTube">
             <iframe
               src="https://www.youtube.com/embed/l7TlAz1HvSk?rel=0"
@@ -147,7 +219,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
               allowFullScreen
             />
           </section>
-          <div className="row">
+          <div className="row sticky-live-actions">
             <button onClick={() => openCheckout(products[0])}>Comprar merch</button>
             <button className="ghost" onClick={toggleReconnectState}>
               {liveState === 'live' ? 'Simular reconexion' : 'Volver al directo'}
@@ -168,39 +240,16 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     );
   }
 
-  if (fanTab === 'rewards') {
-    const assetsById = new Map(nftAssets.map((asset) => [asset.id, asset]));
-
+  if (fanTab === 'store') {
     return (
       <section className="stack">
         <article className="guide-card">
-          <h3>Paso 3: reclama y canjea</h3>
-          <p>Desbloquea niveles, reclama NFTs y usa tus BEL para reducir el total en checkout.</p>
-        </article>
-
-        <h2>Niveles de fidelidad</h2>
-        {tiers.map((tier) => (
-          <article key={tier.id} className={`tier-card ${tier.unlocked ? 'unlocked' : ''}`}>
-            <h3>{tier.title}</h3>
-            <p>{tier.requirement}</p>
-            <small>{tier.progress}</small>
-            <small>Recompensa: {tier.reward}</small>
-            <button onClick={() => claimTierReward(tier)} disabled={!tier.unlocked}>
-              {claimedTierIds.includes(tier.id) ? 'Reclamada' : tier.unlocked ? 'Reclamar' : 'Bloqueada'}
-            </button>
-          </article>
-        ))}
-
-        <article className="metric-card">
-          <p>Belako Coin</p>
-          <small>Saldo actual: {belakoCoins} BEL</small>
-          <small>Hitos: ver directo (+{coinPolicy.watchReward} BEL) | compra merch (+{coinPolicy.purchaseReward} BEL)</small>
-          <small>Límite diario por visualización: {coinPolicy.dailyWatchCoinCap} BEL</small>
-          <small>{canUseCoinDiscount ? 'Puedes usar descuento en checkout.' : 'Consigue más BEL para activar descuento.'}</small>
+          <h3>Tienda oficial Belako</h3>
+          <p>Compra en euros con Stripe o canjea con BEL cuando desbloquees hitos.</p>
         </article>
 
         <article className="metric-card">
-          <p>Tienda oficial y recompensas</p>
+          <p>Catálogo</p>
           <div className="store-filter-row">
             <button className={storeFilter === 'all' ? 'primary' : 'ghost'} onClick={() => setStoreFilter('all')}>
               Todo
@@ -233,6 +282,51 @@ export function FanScreens({ model }: { model: FidelityModel }) {
               </article>
             ))}
           </div>
+        </article>
+      </section>
+    );
+  }
+
+  if (fanTab === 'rewards') {
+    const assetsById = new Map(nftAssets.map((asset) => [asset.id, asset]));
+
+    return (
+      <section className="stack">
+        <article className="guide-card">
+          <h3>Progresión fan</h3>
+          <p>Desbloquea niveles, reclama NFTs y maximiza tus BEL.</p>
+        </article>
+
+        <h2>Niveles de fidelidad</h2>
+        {tiers.map((tier) => (
+          <article key={tier.id} className={`tier-card ${tier.unlocked ? 'unlocked' : ''}`}>
+            <h3>{tier.title}</h3>
+            <p>{tier.requirement}</p>
+            <small>{tier.progress}</small>
+            <small>Recompensa: {tier.reward}</small>
+            <div className="progress-track" aria-hidden="true">
+              <div className="progress-fill" style={{ width: `${tierProgressPercent(tier.id)}%` }} />
+            </div>
+            <button onClick={() => claimTierReward(tier)} disabled={!tier.unlocked}>
+              {claimedTierIds.includes(tier.id) ? 'Reclamada' : tier.unlocked ? 'Reclamar' : 'Bloqueada'}
+            </button>
+          </article>
+        ))}
+
+        <article className="metric-card">
+          <p>Recompensa por directo completo</p>
+          <small>Verifica un directo entero para desbloquear este bonus.</small>
+          <button onClick={claimFullLiveReward} disabled={!fullLiveRewardUnlocked}>
+            {fullLiveRewardClaimed ? 'Reclamada' : fullLiveRewardUnlocked ? 'Reclamar +25 BEL' : 'Bloqueada'}
+          </button>
+        </article>
+
+        <article className="metric-card">
+          <p>Belako Coin</p>
+          <small>Saldo actual: {belakoCoins} BEL</small>
+          <small>Hitos: ver directo (+{coinPolicy.watchReward} BEL) | compra merch (+{coinPolicy.purchaseReward} BEL)</small>
+          <small>Límite diario por visualización: {coinPolicy.dailyWatchCoinCap} BEL</small>
+          <small>{canUseCoinDiscount ? 'Puedes usar descuento en checkout.' : 'Consigue más BEL para activar descuento.'}</small>
         </article>
 
         <article className="metric-card">
@@ -315,7 +409,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     <section className="stack">
       <article className="guide-card">
         <h3>Centro de control fan</h3>
-        <p>Revisa notificaciones, progreso y acciones recomendadas para subir de nivel.</p>
+        <p>Estado general de tu cuenta, notificaciones y eventos clave.</p>
       </article>
 
       <h2>Perfil fan</h2>
