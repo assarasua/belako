@@ -14,6 +14,14 @@ jobs:
           node-version: 20
       - run: npm ci
         working-directory: .
+      - name: Validate required frontend env
+        run: |
+          if [ -z "${VITE_GOOGLE_CLIENT_ID}" ]; then
+            echo "Missing required secret: VITE_GOOGLE_CLIENT_ID"
+            exit 1
+          fi
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
       - run: npm run build
         working-directory: .
         env:
