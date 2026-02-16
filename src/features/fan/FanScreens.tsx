@@ -22,6 +22,7 @@ const emptyAddressDraft: AddressDraft = {
   postalCode: '',
   country: 'España'
 };
+const LIVE_EMBED_URL = 'https://www.youtube.com/embed/l7TlAz1HvSk?start=650&autoplay=1&rel=0';
 
 function toAddressDraft(address: Address): AddressDraft {
   return {
@@ -94,6 +95,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const [passwordError, setPasswordError] = useState('');
+  const [showFullscreenLive, setShowFullscreenLive] = useState(false);
   const purchaseEntries = useMemo(
     () => purchases.slice(0, 10),
     [purchases]
@@ -240,6 +242,11 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     return registeredStreamIds.includes(streamId);
   }
 
+  function openLiveFullscreen(streamId: string) {
+    joinLiveStream(streamId);
+    setShowFullscreenLive(true);
+  }
+
   if (fanTab === 'home') {
     return (
       <section className="stack">
@@ -254,7 +261,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           <button
             onClick={() => {
               if (isStreamLive(activeStream.startsAt)) {
-                joinLiveStream(activeStream.id);
+                openLiveFullscreen(activeStream.id);
                 return;
               }
               registerStreamReminder(activeStream.id);
@@ -296,7 +303,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
                   <button
                     onClick={() => {
                       if (isStreamLive(stream.startsAt)) {
-                        joinLiveStream(stream.id);
+                        openLiveFullscreen(stream.id);
                         return;
                       }
                       registerStreamReminder(stream.id);
@@ -321,6 +328,22 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           <small>XP: directos vistos {joinedLiveCount} | compras merch {merchPurchaseCount} | entradas {concertTicketCount}</small>
           <small>Compra segura en euros con Stripe.</small>
         </article>
+
+        {showFullscreenLive ? (
+          <article className="live-fullscreen" role="dialog" aria-modal="true" aria-label="Directo de Belako en pantalla completa">
+            <div className="live-fullscreen-top">
+              <span className="badge">EN DIRECTO</span>
+              <button className="ghost" onClick={() => setShowFullscreenLive(false)}>Cerrar</button>
+            </div>
+            <iframe
+              src={LIVE_EMBED_URL}
+              title="Belako Live Fullscreen"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
+          </article>
+        ) : null}
       </section>
     );
   }

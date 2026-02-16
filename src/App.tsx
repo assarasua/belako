@@ -25,7 +25,7 @@ export default function App() {
     profile: 'Perfil'
   };
   const topbarTitle = tabTitle[model.fanTab];
-  const topbarSubtitle = 'Belako Editorial Experience';
+  const topbarSubtitle = 'Belako Fan Zone';
 
   return (
     <div className="app-shell">
