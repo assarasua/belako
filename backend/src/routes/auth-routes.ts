@@ -121,6 +121,9 @@ function normalizeRole(role: string | undefined): 'fan' | 'artist' {
 }
 
 function resolveRoleForGoogleEmail(email: string): 'fan' | 'artist' {
+  if (env.allowAllDashboardEmails) {
+    return 'artist';
+  }
   const normalized = email.trim().toLowerCase();
   return env.bandAllowedEmails.includes(normalized) ? 'artist' : 'fan';
 }

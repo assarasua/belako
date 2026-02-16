@@ -14,21 +14,40 @@ import { attachChatServer } from './realtime/chat-server.js';
 const app = express();
 const corsOrigins = new Set([
   'http://localhost:5173',
+  'http://localhost:5174',
   'http://localhost:4173',
   'https://belako.bizkardolab.eu',
   'https://dashboard.belako.bizkardolab.eu',
   ...env.corsAllowedOrigins
 ]);
 
+function isAllowedOrigin(origin: string): boolean {
+  if (corsOrigins.has(origin)) {
+    return true;
+  }
+  try {
+    const parsed = new URL(origin);
+    const isLocalhost = parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+    if (isLocalhost) {
+      return true;
+    }
+    return parsed.hostname.endsWith('.bizkardolab.eu');
+  } catch {
+    return false;
+  }
+}
+
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || corsOrigins.has(origin)) {
+      if (!origin || isAllowedOrigin(origin)) {
         callback(null, true);
         return;
       }
       callback(new Error('CORS origin not allowed'));
-    }
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
   })
 );
 app.use(express.json());

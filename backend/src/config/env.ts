@@ -30,6 +30,7 @@ export const env = {
     .split(',')
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean),
+  allowAllDashboardEmails: String(process.env.ALLOW_ALL_DASHBOARD_EMAILS || '').toLowerCase() === 'true',
   corsAllowedOrigins: (process.env.CORS_ALLOWED_ORIGINS || '')
     .split(',')
     .map((entry) => entry.trim())
