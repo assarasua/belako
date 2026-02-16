@@ -22,7 +22,12 @@ app.get('/', (_req, res) => {
       authLogin: '/auth/login',
       loyalty: '/loyalty/evaluate',
       commerce: '/commerce/checkout',
-      walletMint: '/wallet/mint',
+      walletAssets: '/wallet/nft-assets',
+      walletGrants: '/wallet/grants',
+      walletCollection: '/wallet/collection',
+      meetGreetPass: '/wallet/meet-greet/pass',
+      meetGreetQr: '/wallet/meet-greet/qr-token',
+      meetGreetValidate: '/wallet/meet-greet/validate',
       analytics: '/analytics/track'
     }
   });

@@ -372,6 +372,25 @@ details p {
   margin-top: 4px;
 }
 
+.qr-card {
+  margin-top: 6px;
+  border-radius: var(--r-sm);
+  border: 1px solid #4f668f;
+  background: rgba(17, 25, 40, 0.84);
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+.qr-image {
+  width: min(220px, 100%);
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  border: 1px solid #5d76a1;
+  background: #f2f4f8;
+  justify-self: center;
+}
+
 @keyframes card-in {
   from {
     opacity: 0;

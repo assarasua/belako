@@ -123,6 +123,31 @@
   background: transparent;
 }
 
+.bottom-nav button.nav-home {
+  width: 62px;
+  min-width: 62px;
+  min-height: 62px;
+  border-radius: 999px;
+  margin: 0 auto;
+  transform: translateY(-14px);
+  background: linear-gradient(135deg, rgba(255, 111, 180, 0.24), rgba(143, 193, 255, 0.22));
+  border: 1px solid rgba(255, 153, 212, 0.64);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+}
+
+.bottom-nav button.nav-home .nav-icon {
+  width: 2.1rem;
+  height: 2.1rem;
+  min-width: 2.1rem;
+  font-size: 0.68rem;
+  border-color: rgba(255, 213, 238, 0.56);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.bottom-nav button.nav-home .nav-label {
+  display: none;
+}
+
 .nav-icon {
   min-width: 1.8rem;
   height: 1.2rem;
@@ -147,6 +172,11 @@
   background: linear-gradient(120deg, var(--accent-primary), var(--accent-soft));
   color: #321427;
   box-shadow: 0 0 16px rgba(255, 111, 180, 0.45);
+}
+
+.bottom-nav button.nav-home.active {
+  transform: translateY(-16px) scale(1.04);
+  box-shadow: 0 0 0 1px rgba(255, 195, 231, 0.38), 0 14px 26px rgba(255, 111, 180, 0.38);
 }
 
 .bottom-nav button.active .nav-icon {
@@ -183,6 +213,13 @@
 @media (max-width: 420px) {
   .app-shell {
     padding: var(--s-2);
+  }
+
+  .bottom-nav button.nav-home {
+    transform: translateY(-12px);
+    width: 58px;
+    min-width: 58px;
+    min-height: 58px;
   }
 
   .row,

@@ -25,16 +25,27 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     nextStream,
     tiers,
     claimTierReward,
+    claimPendingNftGrant,
     claimedTierIds,
     conversion,
     events,
     coinPolicy,
     canUseCoinDiscount,
     rewardHistory,
+    nftSyncing,
+    nftGrants,
+    nftClaimLoadingById,
+    nftClaimErrorById,
     ownedNfts,
     nftAssets,
     nftImageLoadErrors,
     markNftImageError,
+    meetGreetPass,
+    meetGreetQrToken,
+    meetGreetQrExpiresAt,
+    meetGreetQrLoading,
+    refreshMeetGreetPass,
+    generateMeetGreetQr,
     notifications,
     clearNotifications
   } = model;
@@ -274,7 +285,9 @@ export function FanScreens({ model }: { model: FidelityModel }) {
                 </small>
                 <small>Canje recompensa: {product.belakoCoinCost} BEL</small>
                 <div className="product-actions">
-                  <button onClick={() => openCheckout(product, 'fiat')}>Comprar merch (€)</button>
+                  <button onClick={() => openCheckout(product, 'fiat')}>
+                    Comprar merch (€)
+                  </button>
                   <button className="ghost" onClick={() => openCheckout(product, 'coin')} disabled={!canRedeem}>
                     {!canRedeem ? 'BEL insuficiente' : 'Canjear con BEL'}
                   </button>
@@ -319,6 +332,77 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           <button onClick={claimFullLiveReward} disabled={!fullLiveRewardUnlocked}>
             {fullLiveRewardClaimed ? 'Reclamada' : fullLiveRewardUnlocked ? 'Reclamar +25 BEL' : 'Bloqueada'}
           </button>
+        </article>
+
+        <article className="metric-card">
+          <p>NFTs pendientes de reclamar</p>
+          {nftSyncing ? <small>Sincronizando NFTs...</small> : null}
+          {nftGrants.filter((grant) => grant.status === 'PENDING').length === 0 ? (
+            <small>No tienes grants pendientes por ahora.</small>
+          ) : (
+            <div className="event-list">
+              {nftGrants
+                .filter((grant) => grant.status === 'PENDING')
+                .map((grant) => {
+                  const asset = nftAssets.find((item) => item.id === grant.assetId);
+                  const loading = nftClaimLoadingById[grant.id];
+                  const error = nftClaimErrorById[grant.id];
+                  return (
+                    <article key={grant.id} className="product-card">
+                      <strong>{asset?.name || grant.assetId}</strong>
+                      <small>Origen: {grant.originType} · {grant.originRef}</small>
+                      <button onClick={() => claimPendingNftGrant(grant.id)} disabled={loading}>
+                        {loading ? 'Minteando en Polygon...' : 'Reclamar NFT'}
+                      </button>
+                      {error ? <small className="hint">{error}</small> : null}
+                    </article>
+                  );
+                })}
+            </div>
+          )}
+        </article>
+
+        <article className="metric-card">
+          <div className="row actions-row">
+            <p>Pase Meet & Greet Superfan</p>
+            <button className="ghost" onClick={refreshMeetGreetPass}>Actualizar</button>
+          </div>
+          {meetGreetPass.status === 'LOCKED' ? (
+            <>
+              <small>Estado: Bloqueado</small>
+              <small>Requisito: alcanzar Tier 3 Superfan y reclamar el NFT Pass.</small>
+            </>
+          ) : (
+            <>
+              <small>
+                Estado: {meetGreetPass.status === 'VALID' ? 'Valido' : meetGreetPass.status === 'USED' ? 'Usado' : 'Expirado'}
+              </small>
+              <small>{meetGreetPass.event?.title || 'Evento por confirmar'}</small>
+              <small>
+                {meetGreetPass.event
+                  ? `${new Date(meetGreetPass.event.date).toLocaleString()} · ${meetGreetPass.event.location}`
+                  : 'Sin fecha activa'}
+              </small>
+              {meetGreetPass.status === 'VALID' ? (
+                <>
+                  <button onClick={generateMeetGreetQr} disabled={meetGreetQrLoading}>
+                    {meetGreetQrLoading ? 'Generando QR...' : 'Generar QR de acceso'}
+                  </button>
+                  {meetGreetQrToken ? (
+                    <div className="qr-card">
+                      <img
+                        className="qr-image"
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(meetGreetQrToken)}`}
+                        alt="QR de acceso Meet & Greet Belako"
+                        loading="lazy"
+                      />
+                      <small>Expira: {new Date(meetGreetQrExpiresAt).toLocaleTimeString()}</small>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </>
+          )}
         </article>
 
         <article className="metric-card">
@@ -416,6 +500,24 @@ export function FanScreens({ model }: { model: FidelityModel }) {
       <article className="metric-card">
         <p>Estado</p>
         <h3>{tiers[2].unlocked ? 'Superfan Belako' : tiers[0].unlocked ? 'Nivel 1 activo' : 'Fan casual'}</h3>
+      </article>
+      <article className="metric-card">
+        <p>Pase Meet & Greet</p>
+        <h3>
+          {meetGreetPass.status === 'VALID'
+            ? 'Pase valido'
+            : meetGreetPass.status === 'USED'
+              ? 'Pase usado'
+              : meetGreetPass.status === 'EXPIRED'
+                ? 'Pase expirado'
+                : 'Bloqueado'}
+        </h3>
+        {meetGreetPass.event ? <small>{meetGreetPass.event.title}</small> : null}
+        {meetGreetPass.event && meetGreetPass.status === 'VALID' ? (
+          <small>
+            Proxima fecha: {new Date(meetGreetPass.event.date).toLocaleString()} · {meetGreetPass.event.location}
+          </small>
+        ) : null}
       </article>
       <article className="metric-card">
         <p>KPI principal</p>

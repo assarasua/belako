@@ -28,6 +28,7 @@ export type NftAsset = {
   imageUrl: string;
   rarity: 'fan' | 'premium' | 'legendary';
   source: 'official-web';
+  metadataUri?: string;
 };
 
 export type OwnedNft = {
@@ -35,6 +36,60 @@ export type OwnedNft = {
   assetId: string;
   mintedAt: string;
   originTier: 1 | 2 | 3;
+};
+
+export type NftGrantStatus = 'PENDING' | 'MINTED' | 'FAILED';
+export type NftGrantOriginType = 'TIER' | 'FULL_LIVE' | 'CAMPAIGN';
+
+export type NftGrant = {
+  id: string;
+  userId: string;
+  assetId: string;
+  originType: NftGrantOriginType;
+  originRef: string;
+  status: NftGrantStatus;
+  createdAt: string;
+  mintedAt?: string;
+  errorReason?: string;
+};
+
+export type NftCollectibleDto = {
+  id: string;
+  userId: string;
+  walletAddress: string;
+  assetId: string;
+  tokenId: string;
+  txHash: string;
+  chainId: number;
+  mintStatus: 'MINTED' | 'FAILED';
+  mintedAt: string;
+};
+
+export type MintClaimResult = {
+  grant: NftGrant;
+  collectible?: NftCollectibleDto;
+};
+
+export type MeetGreetPassStatus = 'LOCKED' | 'VALID' | 'USED' | 'EXPIRED';
+
+export type ConcertEvent = {
+  id: string;
+  title: string;
+  date: string;
+  location: string;
+  active: boolean;
+};
+
+export type MeetGreetPass = {
+  status: MeetGreetPassStatus;
+  event?: ConcertEvent;
+  passAsset?: NftAsset;
+  canGenerateQr: boolean;
+};
+
+export type QrTokenResponse = {
+  qrToken: string;
+  expiresAt: string;
 };
 
 export type Tier = {

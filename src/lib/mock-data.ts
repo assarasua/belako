@@ -77,7 +77,7 @@ export const streams: Stream[] = [
 
 export const products: Product[] = [
   { id: 'p1', name: 'Púa firmada Belako', fiatPrice: 25, belakoCoinCost: 120, limited: true },
-  { id: 'p2', name: 'Camiseta Gira Belako', fiatPrice: 45, belakoCoinCost: 240, limited: true },
+  { id: 'p2', name: 'Camiseta Gira Belako (Drop Premium)', fiatPrice: 45, belakoCoinCost: 240, limited: true },
   { id: 'p3', name: 'Fanzine backstage Belako', fiatPrice: 18, belakoCoinCost: 90, limited: false }
 ];
 
@@ -100,6 +100,13 @@ export const officialBelakoNftAssets: NftAsset[] = [
     id: 'nft-legendary-01',
     name: 'Belako Press Band - Legendary',
     imageUrl: 'https://www.belakoband.com/cdn/shop/files/Belako_PRESS_Band_1.jpg?v=1753809570',
+    rarity: 'legendary',
+    source: 'official-web'
+  },
+  {
+    id: 'nft-superfan-mg-pass',
+    name: 'Belako Superfan Meet & Greet Pass',
+    imageUrl: 'https://www.belakoband.com/cdn/shop/files/Belako_grupo.jpg?v=1753809570',
     rarity: 'legendary',
     source: 'official-web'
   },

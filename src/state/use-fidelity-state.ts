@@ -4,7 +4,10 @@ import type {
   EventItem,
   FanTab,
   LiveState,
+  MeetGreetPass,
   NftAsset,
+  NftCollectibleDto,
+  NftGrant,
   NotificationItem,
   OwnedNft,
   Product,
@@ -12,7 +15,17 @@ import type {
   SheetState,
   Tier
 } from '../lib/types';
-import { createStripeCheckoutSession } from '../services/api-client';
+import {
+  claimNftGrant,
+  createMeetGreetQrToken,
+  createNftGrant,
+  createStripeCheckoutSession,
+  fetchMeetGreetPass,
+  fetchNftAssets,
+  fetchNftCollection,
+  fetchNftGrants,
+  verifyAttendanceAndGrant
+} from '../services/api-client';
 
 export type FidelityModel = ReturnType<typeof useFidelityState>;
 
@@ -78,12 +91,23 @@ export function useFidelityState() {
   const notificationTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const [rewardHistory, setRewardHistory] = useState<RewardHistoryItem[]>([]);
-  const [ownedNfts, setOwnedNfts] = useState<OwnedNft[]>([]);
+  const [nftAssets, setNftAssets] = useState<NftAsset[]>(officialBelakoNftAssets);
+  const [nftGrants, setNftGrants] = useState<NftGrant[]>([]);
+  const [nftCollection, setNftCollection] = useState<NftCollectibleDto[]>([]);
+  const [nftClaimLoadingById, setNftClaimLoadingById] = useState<Record<string, boolean>>({});
+  const [nftClaimErrorById, setNftClaimErrorById] = useState<Record<string, string>>({});
+  const [nftSyncing, setNftSyncing] = useState(false);
   const [nftImageLoadErrors, setNftImageLoadErrors] = useState<Record<string, boolean>>({});
   const [latestMintedNftId, setLatestMintedNftId] = useState<string | null>(null);
+  const [meetGreetPass, setMeetGreetPass] = useState<MeetGreetPass>({
+    status: 'LOCKED',
+    canGenerateQr: false
+  });
+  const [meetGreetQrToken, setMeetGreetQrToken] = useState('');
+  const [meetGreetQrExpiresAt, setMeetGreetQrExpiresAt] = useState('');
+  const [meetGreetQrLoading, setMeetGreetQrLoading] = useState(false);
 
   const activeStream = streams[streamIndex];
-  const nftAssets: NftAsset[] = officialBelakoNftAssets;
 
   const coinPolicy = {
     watchReward: 5,
@@ -129,6 +153,24 @@ export function useFidelityState() {
     return () => clearTimeout(timer);
   }, [statusText]);
 
+  useEffect(() => {
+    if (!meetGreetQrExpiresAt) {
+      return;
+    }
+    const expiresAtMs = new Date(meetGreetQrExpiresAt).getTime();
+    const delay = expiresAtMs - Date.now();
+    if (delay <= 0) {
+      setMeetGreetQrToken('');
+      setMeetGreetQrExpiresAt('');
+      return;
+    }
+    const timer = setTimeout(() => {
+      setMeetGreetQrToken('');
+      setMeetGreetQrExpiresAt('');
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [meetGreetQrExpiresAt]);
+
   function pushHistory(item: Omit<RewardHistoryItem, 'id' | 'at'>) {
     setRewardHistory((prev) => [{ id: `h-${Date.now()}-${Math.random()}`, at: nowLabel(), ...item }, ...prev].slice(0, 20));
   }
@@ -143,9 +185,51 @@ export function useFidelityState() {
     return 'legendary';
   }
 
+  function pickAssetByRarity(rarity: NftAsset['rarity']): NftAsset {
+    return nftAssets.find((asset) => asset.rarity === rarity) ?? nftAssets[0];
+  }
+
+  function pickAssetForTier(tierId: Tier['id']): NftAsset {
+    if (tierId === 3) {
+      return (
+        nftAssets.find((asset) => asset.id === 'nft-superfan-mg-pass' || asset.name.includes('Meet & Greet Pass')) ??
+        pickAssetByRarity('legendary')
+      );
+    }
+    return pickAssetByRarity(getTierRarity(tierId));
+  }
+
   function markNftImageError(assetId: string) {
     setNftImageLoadErrors((prev) => ({ ...prev, [assetId]: true }));
   }
+
+  async function syncNftData() {
+    setNftSyncing(true);
+    const [assetsResult, grantsResult, collectionResult, passResult] = await Promise.all([
+      fetchNftAssets(),
+      fetchNftGrants(),
+      fetchNftCollection(),
+      fetchMeetGreetPass()
+    ]);
+
+    if (assetsResult.ok && assetsResult.data?.assets) {
+      setNftAssets(assetsResult.data.assets);
+    }
+    if (grantsResult.ok && grantsResult.data?.grants) {
+      setNftGrants(grantsResult.data.grants);
+    }
+    if (collectionResult.ok && collectionResult.data?.collection) {
+      setNftCollection(collectionResult.data.collection);
+    }
+    if (passResult.ok && passResult.data) {
+      setMeetGreetPass(passResult.data);
+    }
+    setNftSyncing(false);
+  }
+
+  useEffect(() => {
+    void syncNftData();
+  }, []);
 
   const tiers: Tier[] = useMemo(() => {
     return [
@@ -171,7 +255,7 @@ export function useFidelityState() {
         requirement: '20 directos + 150 EUR de gasto',
         unlocked: attendanceCount >= 20 && spend >= 150,
         progress: `${Math.min(attendanceCount, 20)}/20 directos | €${spend}/€150`,
-        reward: 'NFT legendario de Belako + perks superfan'
+        reward: 'NFT Pass Superfan Meet & Greet'
       }
     ];
   }, [attendanceCount, spend]);
@@ -185,6 +269,14 @@ export function useFidelityState() {
   const canUseCoinDiscount = belakoCoins >= coinPolicy.discountCost;
   const currentStreamFullyWatched = fullyWatchedStreamIds.includes(activeStream.id);
   const fullLiveRewardUnlocked = fullyWatchedStreamIds.length > 0;
+  const ownedNfts: OwnedNft[] = useMemo(() => {
+    return nftCollection.map((item) => ({
+      id: item.id,
+      assetId: item.assetId,
+      mintedAt: new Date(item.mintedAt).toLocaleString(),
+      originTier: item.assetId.includes('legendary') ? 3 : item.assetId.includes('premium') ? 2 : 1
+    }));
+  }, [nftCollection]);
 
   function completeOnboarding() {
     const next = onboardingStep + 1;
@@ -207,7 +299,7 @@ export function useFidelityState() {
     pushHistory({ label: `+${coinPolicy.watchReward} BEL por asistencia`, type: 'coin' });
   }
 
-  function watchFullLive() {
+  async function watchFullLive() {
     if (currentStreamFullyWatched) {
       setStatusText('Ya has completado este directo.');
       return;
@@ -216,7 +308,18 @@ export function useFidelityState() {
     setAttendanceCount((n) => n + 1);
     setStatusText('Directo completo visto. Recompensa especial desbloqueada.');
     track('EVT_stream_full_watch', `Directo completo visto: ${activeStream.id}`);
-    notify('Recompensa desbloqueada', 'Ya puedes reclamar la recompensa por ver directo entero.');
+    const fullWatchAsset = pickAssetByRarity('fan');
+    const attendanceResult = await verifyAttendanceAndGrant({
+      streamId: activeStream.id,
+      rewardAssetId: fullWatchAsset.id
+    });
+    if (attendanceResult.ok && attendanceResult.data?.grant) {
+      const grant = attendanceResult.data.grant;
+      setNftGrants((prev) => [grant, ...prev.filter((item) => item.id !== grant.id)]);
+      notify('Recompensa desbloqueada', 'NFT pendiente disponible por ver el directo entero.');
+    } else {
+      notify('Recompensa desbloqueada', 'Ya puedes reclamar la recompensa por ver directo entero.');
+    }
     pushHistory({ label: `Directo completo: ${activeStream.title}`, type: 'reward' });
   }
 
@@ -339,7 +442,7 @@ export function useFidelityState() {
     window.location.assign(response.data.url);
   }
 
-  function claimTierReward(tier: Tier) {
+  async function claimTierReward(tier: Tier) {
     if (!tier.unlocked) {
       setStatusText('Nivel todavia no desbloqueado.');
       return;
@@ -352,28 +455,75 @@ export function useFidelityState() {
     setClaimedTierIds((prev) => [...prev, tier.id]);
     setBelakoCoins((n) => n + coinPolicy.claimReward);
 
-    const targetRarity = getTierRarity(tier.id);
-    const selectedAsset = nftAssets.find((asset) => asset.rarity === targetRarity) ?? nftAssets[0];
-    const mintedId = `owned-${Date.now()}-${Math.random()}`;
+    const selectedAsset = pickAssetForTier(tier.id);
+    const grantResult = await createNftGrant({
+      assetId: selectedAsset.id,
+      originType: 'TIER',
+      originRef: `tier-${tier.id}`
+    });
 
-    setOwnedNfts((prev) => [
-      {
-        id: mintedId,
-        assetId: selectedAsset.id,
-        mintedAt: nowLabel(),
-        originTier: tier.id
-      },
-      ...prev
-    ]);
-    setLatestMintedNftId(mintedId);
+    if (grantResult.ok && grantResult.data?.grant) {
+      const grant = grantResult.data.grant;
+      setNftGrants((prev) => [grant, ...prev.filter((item) => item.id !== grant.id)]);
+      setStatusText(`Grant NFT creado para ${tier.title}. Reclámalo para mintear en Polygon.`);
+      notify('NFT disponible', `Grant creado: ${selectedAsset.name}. Reclámalo desde Recompensas.`);
+      track('EVT_reward_claimed', `Grant NFT creado al reclamar ${tier.title}`);
+      pushHistory({ label: `Grant NFT creado: ${selectedAsset.name}`, type: 'nft' });
+    } else {
+      setStatusText('No se pudo crear el grant NFT. Intenta de nuevo.');
+      notify('Error NFT', grantResult.error || 'No se pudo crear el grant.');
+    }
 
-    setSheet('reward');
-    setStatusText(`NFT de Belako minteado por ${tier.title}. +${coinPolicy.claimReward} BEL.`);
-    track('EVT_reward_claimed', `NFT minteado al reclamar ${tier.title}`);
-    notify('NFT desbloqueado', 'NFT de Belako añadido a tu colección.');
-    pushHistory({ label: `NFT reclamado: ${selectedAsset.name}`, type: 'nft' });
     pushHistory({ label: `Claim de ${tier.title}`, type: 'reward' });
     pushHistory({ label: `+${coinPolicy.claimReward} BEL por reclamar recompensa`, type: 'coin' });
+  }
+
+  async function claimPendingNftGrant(grantId: string) {
+    setNftClaimLoadingById((prev) => ({ ...prev, [grantId]: true }));
+    setNftClaimErrorById((prev) => ({ ...prev, [grantId]: '' }));
+
+    const result = await claimNftGrant(grantId);
+    setNftClaimLoadingById((prev) => ({ ...prev, [grantId]: false }));
+
+    if (!result.ok || !result.data?.grant) {
+      const errorMessage = result.error || 'No se pudo reclamar el NFT.';
+      setNftClaimErrorById((prev) => ({ ...prev, [grantId]: errorMessage }));
+      setStatusText(errorMessage);
+      return;
+    }
+
+    const updatedGrant = result.data.grant;
+    setNftGrants((prev) => [updatedGrant, ...prev.filter((item) => item.id !== updatedGrant.id)]);
+
+    if (result.data.collectible) {
+      const collectible = result.data.collectible;
+      const mintedAsset = nftAssets.find((asset) => asset.id === collectible.assetId);
+      const isSuperfanPass = mintedAsset?.id === 'nft-superfan-mg-pass';
+      setNftCollection((prev) => [collectible, ...prev.filter((item) => item.id !== collectible.id)]);
+      const passResult = await fetchMeetGreetPass();
+      if (passResult.ok && passResult.data) {
+        setMeetGreetPass(passResult.data);
+      }
+      setLatestMintedNftId(collectible.id);
+      setSheet('reward');
+      setStatusText(
+        isSuperfanPass
+          ? 'NFT Pass Superfan minteado. Ya puedes usar Meet & Greet.'
+          : 'NFT minteado en Polygon y añadido a tu colección.'
+      );
+      notify(
+        isSuperfanPass ? 'NFT Pass Superfan minteado' : 'NFT minteado',
+        isSuperfanPass
+          ? 'Tu pase de acceso Meet & Greet ya está activo.'
+          : `Tx ${collectible.txHash.slice(0, 12)}... confirmado.`
+      );
+      pushHistory({
+        label: isSuperfanPass ? 'NFT Pass Superfan minteado' : `NFT minteado (${collectible.tokenId})`,
+        type: 'nft'
+      });
+    } else {
+      setStatusText('Grant actualizado.');
+    }
   }
 
   function nextStream() {
@@ -399,13 +549,37 @@ export function useFidelityState() {
 
   function endStream() {
     setLiveState('ended');
-    setStatusText('Directo finalizado. Desliza para el siguiente.');
+    setStatusText('Directo finalizado. Puedes entrar al siguiente directo cuando quieras.');
   }
 
   function clearNotifications() {
     Object.values(notificationTimeouts.current).forEach((timer) => clearTimeout(timer));
     notificationTimeouts.current = {};
     setNotifications([]);
+  }
+
+  async function refreshMeetGreetPass() {
+    const passResult = await fetchMeetGreetPass();
+    if (passResult.ok && passResult.data) {
+      setMeetGreetPass(passResult.data);
+    }
+  }
+
+  async function generateMeetGreetQr() {
+    setMeetGreetQrLoading(true);
+    const result = await createMeetGreetQrToken();
+    setMeetGreetQrLoading(false);
+
+    if (!result.ok || !result.data) {
+      setStatusText(result.error || 'No se pudo generar el QR.');
+      notify('Error QR', result.error || 'No se pudo generar el QR de acceso.');
+      return;
+    }
+
+    setMeetGreetQrToken(result.data.qrToken);
+    setMeetGreetQrExpiresAt(result.data.expiresAt);
+    notify('Pase QR generado', 'Presenta este QR en la entrada del meet & greet.');
+    track('EVT_meet_greet_qr_generated', 'QR de acceso meet & greet generado');
   }
 
   useEffect(() => {
@@ -468,10 +642,19 @@ export function useFidelityState() {
     events,
     notifications,
     rewardHistory,
+    nftSyncing,
+    nftGrants,
+    nftCollection,
+    nftClaimLoadingById,
+    nftClaimErrorById,
     ownedNfts,
     nftAssets,
     nftImageLoadErrors,
     latestMintedNftId,
+    meetGreetPass,
+    meetGreetQrToken,
+    meetGreetQrExpiresAt,
+    meetGreetQrLoading,
     tiers,
     conversion,
     setFanTab,
@@ -482,6 +665,7 @@ export function useFidelityState() {
     watchMinute,
     watchFullLive,
     claimFullLiveReward,
+    claimPendingNftGrant,
     openCheckout,
     updateCheckoutField,
     toggleCoinDiscount,
@@ -491,6 +675,9 @@ export function useFidelityState() {
     toggleReconnectState,
     endStream,
     clearNotifications,
+    syncNftData,
+    refreshMeetGreetPass,
+    generateMeetGreetQr,
     track
   };
 }

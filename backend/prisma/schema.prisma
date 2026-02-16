@@ -20,6 +20,29 @@ enum OrderStatus {
   FAILED
 }
 
+enum NftGrantOriginType {
+  TIER
+  FULL_LIVE
+  CAMPAIGN
+}
+
+enum NftGrantStatus {
+  PENDING
+  MINTED
+  FAILED
+}
+
+enum NftMintStatus {
+  MINTED
+  FAILED
+}
+
+enum MeetGreetAccessStatus {
+  VALID
+  USED
+  EXPIRED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -30,6 +53,8 @@ model User {
   bids         Bid[]
   orders       Order[]
   wallets      Wallet[]
+  nftGrants    NftGrant[]
+  meetGreetAccesses MeetGreetAccess[]
 }
 
 model Stream {
@@ -104,16 +129,78 @@ model Wallet {
   nftCollectibles NftCollectible[]
 }
 
+model NftAsset {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  rarity        String
+  imageUrl      String
+  metadataUri   String
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  nftCollectibles NftCollectible[]
+  nftGrants     NftGrant[]
+  meetGreetAccesses MeetGreetAccess[]
+}
+
+model NftGrant {
+  id          String            @id @default(cuid())
+  userId      String
+  assetId     String
+  originType  NftGrantOriginType
+  originRef   String
+  status      NftGrantStatus    @default(PENDING)
+  createdAt   DateTime          @default(now())
+  mintedAt    DateTime?
+  errorReason String?
+  user        User              @relation(fields: [userId], references: [id])
+  asset       NftAsset          @relation(fields: [assetId], references: [id])
+
+  @@index([userId, status])
+  @@index([assetId])
+}
+
 model NftCollectible {
   id         String   @id @default(cuid())
   walletId   String
+  assetId    String
   tokenId    String
   contract   String
+  txHash     String?
+  chainId    Int?
+  mintStatus NftMintStatus @default(MINTED)
   metadataUri String
   mintedAt   DateTime @default(now())
   wallet     Wallet   @relation(fields: [walletId], references: [id])
+  asset      NftAsset @relation(fields: [assetId], references: [id])
 
   @@unique([contract, tokenId])
+}
+
+model ConcertEvent {
+  id        String   @id @default(cuid())
+  title     String
+  date      DateTime
+  location  String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  accesses  MeetGreetAccess[]
+}
+
+model MeetGreetAccess {
+  id          String                @id @default(cuid())
+  userId      String
+  eventId     String
+  passAssetId String
+  status      MeetGreetAccessStatus @default(VALID)
+  issuedAt    DateTime              @default(now())
+  usedAt      DateTime?
+  user        User                  @relation(fields: [userId], references: [id])
+  event       ConcertEvent          @relation(fields: [eventId], references: [id])
+  passAsset   NftAsset              @relation(fields: [passAssetId], references: [id])
+
+  @@index([userId, status])
+  @@unique([userId, eventId])
 }
 
 model AnalyticsEvent {
