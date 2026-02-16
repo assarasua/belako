@@ -18,79 +18,13 @@ export type Product = {
   id: string;
   name: string;
   fiatPrice: number;
-  belakoCoinCost: number;
+  imageUrl: string;
+  purchaseType: 'eur_only' | 'eur_or_bel';
+  belakoCoinCost?: number;
   limited: boolean;
 };
 
-export type NftAsset = {
-  id: string;
-  name: string;
-  imageUrl: string;
-  rarity: 'fan' | 'premium' | 'legendary';
-  source: 'official-web';
-  metadataUri?: string;
-};
-
-export type OwnedNft = {
-  id: string;
-  assetId: string;
-  mintedAt: string;
-  originTier: 1 | 2 | 3;
-};
-
-export type NftGrantStatus = 'PENDING' | 'MINTED' | 'FAILED';
-export type NftGrantOriginType = 'TIER' | 'FULL_LIVE' | 'CAMPAIGN';
-
-export type NftGrant = {
-  id: string;
-  userId: string;
-  assetId: string;
-  originType: NftGrantOriginType;
-  originRef: string;
-  status: NftGrantStatus;
-  createdAt: string;
-  mintedAt?: string;
-  errorReason?: string;
-};
-
-export type NftCollectibleDto = {
-  id: string;
-  userId: string;
-  walletAddress: string;
-  assetId: string;
-  tokenId: string;
-  txHash: string;
-  chainId: number;
-  mintStatus: 'MINTED' | 'FAILED';
-  mintedAt: string;
-};
-
-export type MintClaimResult = {
-  grant: NftGrant;
-  collectible?: NftCollectibleDto;
-};
-
-export type MeetGreetPassStatus = 'LOCKED' | 'VALID' | 'USED' | 'EXPIRED';
-
-export type ConcertEvent = {
-  id: string;
-  title: string;
-  date: string;
-  location: string;
-  active: boolean;
-};
-
-export type MeetGreetPass = {
-  status: MeetGreetPassStatus;
-  event?: ConcertEvent;
-  passAsset?: NftAsset;
-  canGenerateQr: boolean;
-};
-
-export type QrTokenResponse = {
-  qrToken: string;
-  expiresAt: string;
-};
+export type StorePriceSort = 'price_asc' | 'price_desc';
 
 export type Tier = {
   id: 1 | 2 | 3;
@@ -118,5 +52,32 @@ export type RewardHistoryItem = {
   id: string;
   label: string;
   at: string;
-  type: 'coin' | 'purchase' | 'reward' | 'nft';
+  type: 'coin' | 'purchase' | 'reward' | 'xp';
+};
+
+export type SeasonPassTier = {
+  id: string;
+  title: string;
+  requiredXp: number;
+  rewardLabel: string;
+  claimed: boolean;
+};
+
+export type SeasonMission = {
+  id: string;
+  title: string;
+  description: string;
+  xpReward: number;
+  progress: number;
+  goal: number;
+  status: 'locked' | 'active' | 'completed' | 'claimed';
+};
+
+export type GamificationState = {
+  seasonName: string;
+  seasonEndsAt: string;
+  currentXp: number;
+  currentLevel: number;
+  nextLevelXp: number;
+  streakDays: number;
 };

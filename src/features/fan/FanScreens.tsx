@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { products, streams } from '../../lib/mock-data';
+import type { StorePriceSort } from '../../lib/types';
 import type { FidelityModel } from '../../state/use-fidelity-state';
 import { liveBadgeText } from '../../state/use-fidelity-state';
 
@@ -25,57 +26,36 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     nextStream,
     tiers,
     claimTierReward,
-    claimPendingNftGrant,
     claimedTierIds,
     conversion,
     events,
     coinPolicy,
     canUseCoinDiscount,
     rewardHistory,
-    nftSyncing,
-    nftGrants,
-    nftClaimLoadingById,
-    nftClaimErrorById,
-    ownedNfts,
-    nftAssets,
-    nftImageLoadErrors,
-    markNftImageError,
-    meetGreetPass,
-    meetGreetQrToken,
-    meetGreetQrExpiresAt,
-    meetGreetQrLoading,
-    refreshMeetGreetPass,
-    generateMeetGreetQr,
+    seasonPass,
+    seasonTiers,
+    seasonMissions,
+    claimSeasonPassTier,
+    claimSeasonMission,
     notifications,
     clearNotifications
   } = model;
-  const [storeFilter, setStoreFilter] = useState<'all' | 'buy' | 'redeem'>('all');
+  const [storeSort, setStoreSort] = useState<StorePriceSort>('price_asc');
   const [homeFeedCount, setHomeFeedCount] = useState(6);
+  const [productImageLoadErrors, setProductImageLoadErrors] = useState<Record<string, boolean>>({});
   const homeSentinelRef = useRef<HTMLDivElement | null>(null);
 
   const sortedStoreProducts = useMemo(() => {
     const enriched = products.map((product) => ({
       product,
-      canRedeem: belakoCoins >= product.belakoCoinCost
+      canRedeem: product.purchaseType === 'eur_or_bel' && product.belakoCoinCost != null && belakoCoins >= product.belakoCoinCost
     }));
-
-    const filtered = enriched.filter((entry) => {
-      if (storeFilter === 'buy') {
-        return true;
-      }
-      if (storeFilter === 'redeem') {
-        return entry.canRedeem;
-      }
-      return true;
-    });
-
-    return filtered.sort((a, b) => {
-      if (a.canRedeem !== b.canRedeem) {
-        return a.canRedeem ? -1 : 1;
-      }
-      return a.product.fiatPrice - b.product.fiatPrice;
-    });
-  }, [belakoCoins, storeFilter]);
+    return enriched.sort((a, b) =>
+      storeSort === 'price_desc'
+        ? b.product.fiatPrice - a.product.fiatPrice
+        : a.product.fiatPrice - b.product.fiatPrice
+    );
+  }, [belakoCoins, storeSort]);
 
   const homeFeedStreams = useMemo(() => {
     if (streams.length === 0) {
@@ -256,41 +236,53 @@ export function FanScreens({ model }: { model: FidelityModel }) {
       <section className="stack">
         <article className="guide-card">
           <h3>Tienda oficial Belako</h3>
-          <p>Compra en euros con Stripe o canjea con BEL cuando desbloquees hitos.</p>
+          <p>Compra de merch en euros con Stripe. Ordena por precio para encontrar drops rápido.</p>
         </article>
 
         <article className="metric-card">
           <p>Catálogo</p>
-          <div className="store-filter-row">
-            <button className={storeFilter === 'all' ? 'primary' : 'ghost'} onClick={() => setStoreFilter('all')}>
-              Todo
+          <div className="store-sort-row">
+            <button className={storeSort === 'price_asc' ? 'primary' : 'ghost'} onClick={() => setStoreSort('price_asc')}>
+              Precio: menor a mayor
             </button>
-            <button className={storeFilter === 'buy' ? 'primary' : 'ghost'} onClick={() => setStoreFilter('buy')}>
-              Solo comprables
-            </button>
-            <button className={storeFilter === 'redeem' ? 'primary' : 'ghost'} onClick={() => setStoreFilter('redeem')}>
-              Solo canjeables
+            <button className={storeSort === 'price_desc' ? 'primary' : 'ghost'} onClick={() => setStoreSort('price_desc')}>
+              Precio: mayor a menor
             </button>
           </div>
           <div className="product-list">
             {sortedStoreProducts.map(({ product, canRedeem }) => (
               <article key={product.id} className="product-card">
+                {productImageLoadErrors[product.id] ? (
+                  <div className="product-image-fallback">Belako Merch</div>
+                ) : (
+                  <img
+                    className="product-image"
+                    src={product.imageUrl}
+                    alt={`Merch Belako - ${product.name}`}
+                    loading="lazy"
+                    onError={() => setProductImageLoadErrors((prev) => ({ ...prev, [product.id]: true }))}
+                  />
+                )}
                 <strong>{product.name}</strong>
                 <div className="store-badges">
                   <span className="store-badge">MERCH</span>
-                  <span className="store-badge store-badge-reward">REWARD</span>
+                  <span className="store-badge store-badge-reward">{product.purchaseType === 'eur_only' ? 'EUR' : 'EUR/BEL'}</span>
                 </div>
                 <small>
                   Merch: €{product.fiatPrice.toFixed(2)} {product.limited ? '| Limitado' : ''}
                 </small>
-                <small>Canje recompensa: {product.belakoCoinCost} BEL</small>
+                {product.purchaseType === 'eur_or_bel' && product.belakoCoinCost != null ? (
+                  <small>Canje recompensa: {product.belakoCoinCost} BEL</small>
+                ) : null}
                 <div className="product-actions">
                   <button onClick={() => openCheckout(product, 'fiat')}>
                     Comprar merch (€)
                   </button>
-                  <button className="ghost" onClick={() => openCheckout(product, 'coin')} disabled={!canRedeem}>
-                    {!canRedeem ? 'BEL insuficiente' : 'Canjear con BEL'}
-                  </button>
+                  {product.purchaseType === 'eur_or_bel' ? (
+                    <button className="ghost" onClick={() => openCheckout(product, 'coin')} disabled={!canRedeem}>
+                      {!canRedeem ? 'BEL insuficiente' : 'Canjear con BEL'}
+                    </button>
+                  ) : null}
                 </div>
               </article>
             ))}
@@ -301,13 +293,78 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   }
 
   if (fanTab === 'rewards') {
-    const assetsById = new Map(nftAssets.map((asset) => [asset.id, asset]));
+    const seasonEnd = new Date(seasonPass.seasonEndsAt);
+    const daysToSeasonEnd = Math.max(0, Math.ceil((seasonEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
 
     return (
       <section className="stack">
-        <article className="guide-card">
-          <h3>Progresión fan</h3>
-          <p>Desbloquea niveles, reclama NFTs y maximiza tus BEL.</p>
+        <article className="battle-pass-card">
+          <div className="battle-pass-top">
+            <p className="hero-kicker">BATTLE PASS</p>
+            <span className="token-chip">Temporada: {seasonPass.seasonName}</span>
+          </div>
+          <h3>Superfan progression</h3>
+          <p>
+            Nivel {seasonPass.currentLevel} · {seasonPass.currentXp} XP
+            {seasonPass.nextLevelXp > seasonPass.currentXp ? ` / ${seasonPass.nextLevelXp} XP` : ' · MAX'}
+          </p>
+          <div className="progress-track battle-track" aria-hidden="true">
+            <div
+              className="progress-fill battle-fill"
+              style={{
+                width: `${Math.min((seasonPass.currentXp / Math.max(seasonPass.nextLevelXp, 1)) * 100, 100)}%`
+              }}
+            />
+          </div>
+          <div className="battle-pass-meta">
+            <small>Racha activa: {seasonPass.streakDays} días</small>
+            <small>Finaliza en {daysToSeasonEnd} días</small>
+          </div>
+        </article>
+
+        <article className="metric-card">
+          <p>Niveles Battle Pass</p>
+          <div className="battle-tier-grid">
+            {seasonTiers.map((tier) => {
+              const unlocked = seasonPass.currentXp >= tier.requiredXp;
+              return (
+                <article key={tier.id} className={`battle-tier-card ${unlocked ? 'unlocked' : ''}`}>
+                  <strong>{tier.title}</strong>
+                  <small>{tier.requiredXp} XP</small>
+                  <small>{tier.rewardLabel}</small>
+                  <button onClick={() => claimSeasonPassTier(tier.id)} disabled={!unlocked || tier.claimed}>
+                    {tier.claimed ? 'Reclamada' : unlocked ? 'Reclamar' : 'Bloqueada'}
+                  </button>
+                </article>
+              );
+            })}
+          </div>
+        </article>
+
+        <article className="metric-card">
+          <p>Misiones activas</p>
+          <div className="mission-grid">
+            {seasonMissions.length === 0 ? (
+              <p className="hint">No hay misiones activas en este momento.</p>
+            ) : (
+              seasonMissions.map((mission) => (
+                <article key={mission.id} className={`mission-card mission-${mission.status}`}>
+                  <div className="row actions-row">
+                    <strong>{mission.title}</strong>
+                    <span className="mission-xp">+{mission.xpReward} XP</span>
+                  </div>
+                  <small>{mission.description}</small>
+                  <div className="progress-track" aria-hidden="true">
+                    <div className="progress-fill" style={{ width: `${Math.min((mission.progress / mission.goal) * 100, 100)}%` }} />
+                  </div>
+                  <small>{mission.progress}/{mission.goal}</small>
+                  <button onClick={() => claimSeasonMission(mission.id)} disabled={mission.status !== 'completed'}>
+                    {mission.status === 'claimed' ? 'Reclamada' : mission.status === 'completed' ? 'Reclamar' : 'Completar'}
+                  </button>
+                </article>
+              ))
+            )}
+          </div>
         </article>
 
         <h2>Niveles de fidelidad</h2>
@@ -335,77 +392,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         </article>
 
         <article className="metric-card">
-          <p>NFTs pendientes de reclamar</p>
-          {nftSyncing ? <small>Sincronizando NFTs...</small> : null}
-          {nftGrants.filter((grant) => grant.status === 'PENDING').length === 0 ? (
-            <small>No tienes grants pendientes por ahora.</small>
-          ) : (
-            <div className="event-list">
-              {nftGrants
-                .filter((grant) => grant.status === 'PENDING')
-                .map((grant) => {
-                  const asset = nftAssets.find((item) => item.id === grant.assetId);
-                  const loading = nftClaimLoadingById[grant.id];
-                  const error = nftClaimErrorById[grant.id];
-                  return (
-                    <article key={grant.id} className="product-card">
-                      <strong>{asset?.name || grant.assetId}</strong>
-                      <small>Origen: {grant.originType} · {grant.originRef}</small>
-                      <button onClick={() => claimPendingNftGrant(grant.id)} disabled={loading}>
-                        {loading ? 'Minteando en Polygon...' : 'Reclamar NFT'}
-                      </button>
-                      {error ? <small className="hint">{error}</small> : null}
-                    </article>
-                  );
-                })}
-            </div>
-          )}
-        </article>
-
-        <article className="metric-card">
-          <div className="row actions-row">
-            <p>Pase Meet & Greet Superfan</p>
-            <button className="ghost" onClick={refreshMeetGreetPass}>Actualizar</button>
-          </div>
-          {meetGreetPass.status === 'LOCKED' ? (
-            <>
-              <small>Estado: Bloqueado</small>
-              <small>Requisito: alcanzar Tier 3 Superfan y reclamar el NFT Pass.</small>
-            </>
-          ) : (
-            <>
-              <small>
-                Estado: {meetGreetPass.status === 'VALID' ? 'Valido' : meetGreetPass.status === 'USED' ? 'Usado' : 'Expirado'}
-              </small>
-              <small>{meetGreetPass.event?.title || 'Evento por confirmar'}</small>
-              <small>
-                {meetGreetPass.event
-                  ? `${new Date(meetGreetPass.event.date).toLocaleString()} · ${meetGreetPass.event.location}`
-                  : 'Sin fecha activa'}
-              </small>
-              {meetGreetPass.status === 'VALID' ? (
-                <>
-                  <button onClick={generateMeetGreetQr} disabled={meetGreetQrLoading}>
-                    {meetGreetQrLoading ? 'Generando QR...' : 'Generar QR de acceso'}
-                  </button>
-                  {meetGreetQrToken ? (
-                    <div className="qr-card">
-                      <img
-                        className="qr-image"
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(meetGreetQrToken)}`}
-                        alt="QR de acceso Meet & Greet Belako"
-                        loading="lazy"
-                      />
-                      <small>Expira: {new Date(meetGreetQrExpiresAt).toLocaleTimeString()}</small>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-            </>
-          )}
-        </article>
-
-        <article className="metric-card">
           <p>Belako Coin</p>
           <small>Saldo actual: {belakoCoins} BEL</small>
           <small>Hitos: ver directo (+{coinPolicy.watchReward} BEL) | compra merch (+{coinPolicy.purchaseReward} BEL)</small>
@@ -414,75 +400,17 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         </article>
 
         <article className="metric-card">
-          <p>Colección NFT oficial de Belako</p>
-          {ownedNfts.length === 0 ? (
-            <p className="hint">Todavía no tienes NFTs. Reclama una recompensa para mintear el primero.</p>
-          ) : (
-            <div className="nft-grid">
-              {ownedNfts.map((owned) => {
-                const asset = assetsById.get(owned.assetId);
-                if (!asset) {
-                  return null;
-                }
-
-                const hasError = nftImageLoadErrors[asset.id];
-                return (
-                  <article key={owned.id} className="nft-card">
-                    {hasError ? (
-                      <div className="nft-image nft-fallback">NFT Belako</div>
-                    ) : (
-                      <img
-                        className="nft-image"
-                        src={asset.imageUrl}
-                        alt={`NFT Belako - ${asset.name}`}
-                        onError={() => markNftImageError(asset.id)}
-                        loading="lazy"
-                      />
-                    )}
-                    <div className="nft-meta">
-                      <strong>{asset.name}</strong>
-                      <span className={`rarity-badge rarity-${asset.rarity}`}>{asset.rarity}</span>
-                      <small>Mint: {owned.mintedAt}</small>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </article>
-
-        <article className="metric-card">
-          <p>Catálogo NFT disponible</p>
-          <div className="nft-grid">
-            {nftAssets.map((asset) => {
-              const hasError = nftImageLoadErrors[asset.id];
-              return (
-                <article key={asset.id} className="nft-card">
-                  {hasError ? (
-                    <div className="nft-image nft-fallback">NFT Belako</div>
-                  ) : (
-                    <img
-                      className="nft-image"
-                      src={asset.imageUrl}
-                      alt={`NFT Belako - ${asset.name}`}
-                      onError={() => markNftImageError(asset.id)}
-                      loading="lazy"
-                    />
-                  )}
-                  <div className="nft-meta">
-                    <strong>{asset.name}</strong>
-                    <span className={`rarity-badge rarity-${asset.rarity}`}>{asset.rarity}</span>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </article>
-
-        <article className="metric-card">
           <p>Historial de recompensas</p>
           <div className="event-list">
-            {rewardHistory.length === 0 ? <p>Aún no hay movimientos.</p> : rewardHistory.slice(0, 6).map((item) => <p key={item.id}>{item.label} ({item.at})</p>)}
+            {rewardHistory.length === 0 ? (
+              <p>Aún no hay movimientos.</p>
+            ) : (
+              rewardHistory.slice(0, 8).map((item) => (
+                <p key={item.id}>
+                  <span className={`history-tag history-${item.type}`}>{item.type.toUpperCase()}</span> {item.label} ({item.at})
+                </p>
+              ))
+            )}
           </div>
         </article>
       </section>
@@ -500,24 +428,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
       <article className="metric-card">
         <p>Estado</p>
         <h3>{tiers[2].unlocked ? 'Superfan Belako' : tiers[0].unlocked ? 'Nivel 1 activo' : 'Fan casual'}</h3>
-      </article>
-      <article className="metric-card">
-        <p>Pase Meet & Greet</p>
-        <h3>
-          {meetGreetPass.status === 'VALID'
-            ? 'Pase valido'
-            : meetGreetPass.status === 'USED'
-              ? 'Pase usado'
-              : meetGreetPass.status === 'EXPIRED'
-                ? 'Pase expirado'
-                : 'Bloqueado'}
-        </h3>
-        {meetGreetPass.event ? <small>{meetGreetPass.event.title}</small> : null}
-        {meetGreetPass.event && meetGreetPass.status === 'VALID' ? (
-          <small>
-            Proxima fecha: {new Date(meetGreetPass.event.date).toLocaleString()} · {meetGreetPass.event.location}
-          </small>
-        ) : null}
       </article>
       <article className="metric-card">
         <p>KPI principal</p>

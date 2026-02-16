@@ -141,7 +141,6 @@
 
 .product-list,
 .event-list,
-.nft-meta,
 .sheet-grid {
   display: grid;
   gap: var(--s-2);
@@ -159,13 +158,13 @@
   padding: 0.35rem 0 0.1rem;
 }
 
-.store-filter-row {
+.store-sort-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--s-2);
 }
 
-.store-filter-row button {
+.store-sort-row button {
   min-height: 44px;
   font-size: 0.75rem;
 }
@@ -177,6 +176,30 @@
   border: 1px solid #3d4f72;
   background: rgba(22, 33, 52, 0.92);
   padding: var(--s-3);
+}
+
+.product-image,
+.product-image-fallback {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  border-radius: var(--r-sm);
+}
+
+.product-image {
+  object-fit: cover;
+  display: block;
+  border: 1px solid #42567a;
+  background: #121c2f;
+}
+
+.product-image-fallback {
+  display: grid;
+  place-items: center;
+  border: 1px solid #46597e;
+  background: linear-gradient(145deg, #2f4569, #202f47);
+  color: #e4ecff;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 
 .store-badges {
@@ -207,65 +230,76 @@
   margin-top: 4px;
 }
 
-.nft-grid {
+.battle-pass-card {
+  border-radius: var(--r-md);
+  border: 1px solid rgba(255, 171, 221, 0.58);
+  background:
+    radial-gradient(circle at top right, rgba(255, 123, 194, 0.22), transparent 48%),
+    linear-gradient(160deg, rgba(33, 42, 61, 0.96), rgba(17, 24, 39, 0.96));
+  padding: var(--s-3);
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--s-2);
 }
 
-.nft-card {
+.battle-pass-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.battle-track {
+  height: 10px;
+}
+
+.battle-fill {
+  animation: xp-fill 850ms var(--ease-standard);
+}
+
+.battle-pass-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-2);
+  color: #d6e1f8;
+}
+
+.battle-tier-grid,
+.mission-grid {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.battle-tier-card,
+.mission-card {
   border-radius: var(--r-sm);
-  border: 1px solid #44597f;
-  background: rgba(20, 29, 45, 0.94);
-  overflow: hidden;
+  border: 1px solid #4d638c;
+  background: rgba(20, 29, 45, 0.92);
+  padding: 0.6rem 0.68rem;
   display: grid;
+  gap: 6px;
+  animation: card-in var(--dur-base) var(--ease-standard);
 }
 
-.nft-image {
-  width: 100%;
-  aspect-ratio: 4 / 5;
-  object-fit: cover;
-  display: block;
+.battle-tier-card.unlocked {
+  border-color: rgba(255, 174, 224, 0.7);
+  box-shadow: 0 0 0 1px rgba(255, 174, 224, 0.28) inset;
 }
 
-.nft-fallback {
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, #4a2e43, #243853);
-  color: #ffe6f6;
-  font-weight: 700;
-  letter-spacing: 0.06em;
+.mission-card.completed {
+  border-color: rgba(126, 199, 255, 0.74);
 }
 
-.nft-meta {
-  padding: 0.45rem 0.52rem 0.58rem;
+.mission-card.claimed {
+  opacity: 0.75;
 }
 
-.rarity-badge {
+.mission-xp {
   width: fit-content;
   border-radius: 999px;
-  padding: 0.12rem 0.42rem;
-  border: 1px solid transparent;
-  font-size: 0.64rem;
-  text-transform: uppercase;
-}
-
-.rarity-fan {
-  color: #d0e7ff;
-  border-color: rgba(143, 198, 255, 0.56);
-  background: rgba(143, 198, 255, 0.14);
-}
-
-.rarity-premium {
-  color: #ffe2f5;
-  border-color: rgba(255, 172, 223, 0.58);
-  background: rgba(255, 172, 223, 0.16);
-}
-
-.rarity-legendary {
-  color: #ffefc8;
-  border-color: rgba(255, 214, 123, 0.66);
-  background: rgba(255, 214, 123, 0.2);
+  border: 1px solid rgba(126, 199, 255, 0.62);
+  background: rgba(126, 199, 255, 0.15);
+  padding: 0.14rem 0.44rem;
+  font-size: 0.68rem;
 }
 
 .sheet {
@@ -368,27 +402,30 @@ details p {
   align-items: center;
 }
 
-.nft-mini {
-  margin-top: 4px;
+.history-tag {
+  display: inline-block;
+  border-radius: 999px;
+  border: 1px solid #4b6188;
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.38rem;
+  margin-right: 4px;
 }
 
-.qr-card {
-  margin-top: 6px;
-  border-radius: var(--r-sm);
-  border: 1px solid #4f668f;
-  background: rgba(17, 25, 40, 0.84);
-  display: grid;
-  gap: 6px;
-  padding: 10px;
+.history-coin {
+  border-color: rgba(255, 214, 123, 0.6);
+  background: rgba(255, 214, 123, 0.17);
 }
 
-.qr-image {
-  width: min(220px, 100%);
-  aspect-ratio: 1 / 1;
-  border-radius: 10px;
-  border: 1px solid #5d76a1;
-  background: #f2f4f8;
-  justify-self: center;
+.history-xp {
+  border-color: rgba(126, 199, 255, 0.64);
+  background: rgba(126, 199, 255, 0.16);
+}
+
+.history-reward,
+.history-purchase {
+  border-color: rgba(174, 188, 219, 0.58);
+  background: rgba(174, 188, 219, 0.14);
 }
 
 @keyframes card-in {
@@ -399,5 +436,11 @@ details p {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes xp-fill {
+  from {
+    width: 0;
   }
 }

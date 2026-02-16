@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { FidelityModel } from '../state/use-fidelity-state';
 
 export function Sheets({ model }: { model: FidelityModel }) {
@@ -14,19 +15,21 @@ export function Sheets({ model }: { model: FidelityModel }) {
     checkoutMode,
     toggleCoinDiscount,
     canUseCoinDiscount,
-    coinPolicy,
-    ownedNfts,
-    nftAssets,
-    nftImageLoadErrors,
-    latestMintedNftId,
-    markNftImageError
+    coinPolicy
   } = model;
+  const [checkoutImageError, setCheckoutImageError] = useState(false);
+
+  useEffect(() => {
+    setCheckoutImageError(false);
+  }, [selectedProduct.id]);
 
   const serviceFee = Number((selectedProduct.fiatPrice * 0.05).toFixed(2));
   const shipping = selectedProduct.fiatPrice >= 40 ? 0 : 4.9;
   const discount = checkoutUseCoinDiscount ? coinPolicy.discountValueEur : 0;
   const total = Number((selectedProduct.fiatPrice + serviceFee + shipping - discount).toFixed(2));
-  const canRedeemWithCoins = model.belakoCoins >= selectedProduct.belakoCoinCost;
+  const isEurOnly = selectedProduct.purchaseType === 'eur_only';
+  const checkoutIsCoin = checkoutMode === 'coin' && !isEurOnly;
+  const canRedeemWithCoins = checkoutIsCoin && selectedProduct.belakoCoinCost != null && model.belakoCoins >= selectedProduct.belakoCoinCost;
   const fieldError = {
     fullName: checkoutForm.fullName.trim().length > 0 && checkoutForm.fullName.trim().length < 3,
     email: checkoutForm.email.length > 0 && !checkoutForm.email.includes('@'),
@@ -40,9 +43,20 @@ export function Sheets({ model }: { model: FidelityModel }) {
   if (sheet === 'checkout') {
     return (
       <section className="sheet checkout-sheet" role="dialog" aria-label="Checkout">
-        <h3>{checkoutMode === 'coin' ? 'Canje de recompensa' : 'Checkout Belako'}</h3>
+        <h3>{checkoutIsCoin ? 'Canje de recompensa' : 'Checkout Belako'}</h3>
         <p>{selectedProduct.name}</p>
-        <p>{checkoutMode === 'coin' ? 'Canjea este item usando Belako Coin.' : 'Pago exclusivo en euros con tarjeta.'}</p>
+        {checkoutImageError ? (
+          <div className="product-image-fallback">Belako Merch</div>
+        ) : (
+          <img
+            className="product-image"
+            src={selectedProduct.imageUrl}
+            alt={`Merch Belako - ${selectedProduct.name}`}
+            onError={() => setCheckoutImageError(true)}
+            loading="lazy"
+          />
+        )}
+        <p>{checkoutIsCoin ? 'Canjea este item usando Belako Coin.' : 'Pago exclusivo en euros con tarjeta.'}</p>
         <small className="checkout-trust">Pago seguro procesado por Stripe. Datos cifrados de extremo a extremo.</small>
 
         <div className="sheet-grid">
@@ -100,11 +114,11 @@ export function Sheets({ model }: { model: FidelityModel }) {
           </label>
         </div>
 
-        {checkoutMode === 'coin' ? (
+        {checkoutIsCoin ? (
           <div className="summary-box">
-            <p>Precio recompensa: {selectedProduct.belakoCoinCost} BEL</p>
+            <p>Precio recompensa: {selectedProduct.belakoCoinCost ?? 0} BEL</p>
             <p>Saldo actual: {model.belakoCoins} BEL</p>
-            <p><strong>Total canje: {selectedProduct.belakoCoinCost} BEL</strong></p>
+            <p><strong>Total canje: {selectedProduct.belakoCoinCost ?? 0} BEL</strong></p>
           </div>
         ) : (
           <div className="summary-box">
@@ -116,7 +130,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
           </div>
         )}
 
-        {checkoutMode === 'fiat' ? (
+        {!checkoutIsCoin ? (
           <>
             <button className={checkoutUseCoinDiscount ? 'primary' : 'ghost'} onClick={toggleCoinDiscount}>
               {checkoutUseCoinDiscount ? 'Descuento BEL aplicado' : `Aplicar -€${coinPolicy.discountValueEur} (${coinPolicy.discountCost} BEL)`}
@@ -149,14 +163,14 @@ export function Sheets({ model }: { model: FidelityModel }) {
           <button
             className="primary"
             onClick={payWithFiat}
-            disabled={checkoutProcessing || (checkoutMode === 'coin' && !canRedeemWithCoins)}
+            disabled={checkoutProcessing || (checkoutIsCoin && !canRedeemWithCoins)}
           >
             {checkoutProcessing
-              ? checkoutMode === 'coin'
+              ? checkoutIsCoin
                 ? 'Procesando canje...'
                 : 'Redirigiendo a Stripe...'
-              : checkoutMode === 'coin'
-                ? `Confirmar canje (${selectedProduct.belakoCoinCost} BEL)`
+              : checkoutIsCoin
+                ? `Confirmar canje (${selectedProduct.belakoCoinCost ?? 0} BEL)`
                 : 'Pagar con Stripe'}
           </button>
           <button className="ghost" onClick={() => setSheet('none')}>
@@ -169,38 +183,8 @@ export function Sheets({ model }: { model: FidelityModel }) {
 
   return (
     <section className="sheet" role="dialog" aria-label="Recompensa">
-      <h3>NFT de Belako desbloqueado</h3>
-      <p>NFT oficial de Belako añadido a tu colección.</p>
-      {latestMintedNftId ? (
-        (() => {
-          const minted = ownedNfts.find((item) => item.id === latestMintedNftId);
-          const asset = minted ? nftAssets.find((item) => item.id === minted.assetId) : undefined;
-          if (!minted || !asset) {
-            return null;
-          }
-          const hasError = nftImageLoadErrors[asset.id];
-          return (
-            <article className="nft-card nft-mini">
-              {hasError ? (
-                <div className="nft-image nft-fallback">NFT Belako</div>
-              ) : (
-                <img
-                  className="nft-image"
-                  src={asset.imageUrl}
-                  alt={`NFT Belako - ${asset.name}`}
-                  onError={() => markNftImageError(asset.id)}
-                  loading="lazy"
-                />
-              )}
-              <div className="nft-meta">
-                <strong>{asset.name}</strong>
-                <span className={`rarity-badge rarity-${asset.rarity}`}>{asset.rarity}</span>
-                <small>{minted.mintedAt}</small>
-              </div>
-            </article>
-          );
-        })()
-      ) : null}
+      <h3>Recompensa desbloqueada</h3>
+      <p>Tu recompensa ya está disponible en tu progreso de fan.</p>
       <button onClick={() => setSheet('none')}>Listo</button>
     </section>
   );

@@ -1,30 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { officialBelakoNftAssets, products, streams, nowLabel } from '../lib/mock-data';
+import { products, streams, nowLabel } from '../lib/mock-data';
 import type {
   EventItem,
   FanTab,
+  GamificationState,
   LiveState,
-  MeetGreetPass,
-  NftAsset,
-  NftCollectibleDto,
-  NftGrant,
   NotificationItem,
-  OwnedNft,
   Product,
   RewardHistoryItem,
+  SeasonMission,
+  SeasonPassTier,
   SheetState,
   Tier
 } from '../lib/types';
 import {
-  claimNftGrant,
-  createMeetGreetQrToken,
-  createNftGrant,
   createStripeCheckoutSession,
-  fetchMeetGreetPass,
-  fetchNftAssets,
-  fetchNftCollection,
-  fetchNftGrants,
-  verifyAttendanceAndGrant
 } from '../services/api-client';
 
 export type FidelityModel = ReturnType<typeof useFidelityState>;
@@ -50,6 +40,16 @@ const defaultCheckoutForm: CheckoutForm = {
   country: 'España',
   acceptedPolicy: false
 };
+
+const xpPolicy = {
+  watchMinute: 10,
+  fullLive: 50,
+  purchase: 80,
+  tierClaim: 40,
+  missionClaimBonus: 20
+};
+
+const seasonLevels = [0, 100, 220, 380, 580, 820];
 
 export function useFidelityState() {
   const [fanTab, setFanTab] = useState<FanTab>('home');
@@ -91,21 +91,15 @@ export function useFidelityState() {
   const notificationTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const [rewardHistory, setRewardHistory] = useState<RewardHistoryItem[]>([]);
-  const [nftAssets, setNftAssets] = useState<NftAsset[]>(officialBelakoNftAssets);
-  const [nftGrants, setNftGrants] = useState<NftGrant[]>([]);
-  const [nftCollection, setNftCollection] = useState<NftCollectibleDto[]>([]);
-  const [nftClaimLoadingById, setNftClaimLoadingById] = useState<Record<string, boolean>>({});
-  const [nftClaimErrorById, setNftClaimErrorById] = useState<Record<string, string>>({});
-  const [nftSyncing, setNftSyncing] = useState(false);
-  const [nftImageLoadErrors, setNftImageLoadErrors] = useState<Record<string, boolean>>({});
-  const [latestMintedNftId, setLatestMintedNftId] = useState<string | null>(null);
-  const [meetGreetPass, setMeetGreetPass] = useState<MeetGreetPass>({
-    status: 'LOCKED',
-    canGenerateQr: false
-  });
-  const [meetGreetQrToken, setMeetGreetQrToken] = useState('');
-  const [meetGreetQrExpiresAt, setMeetGreetQrExpiresAt] = useState('');
-  const [meetGreetQrLoading, setMeetGreetQrLoading] = useState(false);
+  const [seasonXp, setSeasonXp] = useState(35);
+  const [lastActivityDay, setLastActivityDay] = useState(new Date().toISOString());
+  const [streakDays, setStreakDays] = useState(1);
+  const [watchMinuteCount, setWatchMinuteCount] = useState(0);
+  const [fullWatchCount, setFullWatchCount] = useState(0);
+  const [purchaseCount, setPurchaseCount] = useState(0);
+  const [tierClaimCount, setTierClaimCount] = useState(0);
+  const [claimedSeasonTierIds, setClaimedSeasonTierIds] = useState<string[]>([]);
+  const [claimedMissionIds, setClaimedMissionIds] = useState<string[]>([]);
 
   const activeStream = streams[streamIndex];
 
@@ -117,6 +111,31 @@ export function useFidelityState() {
     discountValueEur: 5,
     dailyWatchCoinCap: 50
   };
+
+  function toDayKey(date: Date): string {
+    return date.toISOString().slice(0, 10);
+  }
+
+  function registerDailyActivity() {
+    const today = new Date();
+    const todayKey = toDayKey(today);
+    const lastKey = toDayKey(new Date(lastActivityDay));
+    if (todayKey === lastKey) {
+      return;
+    }
+
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const yesterdayKey = toDayKey(yesterday);
+
+    setStreakDays((prev) => (lastKey === yesterdayKey ? prev + 1 : 1));
+    setLastActivityDay(today.toISOString());
+  }
+
+  function addXp(amount: number, reason: string) {
+    setSeasonXp((prev) => prev + amount);
+    pushHistory({ label: `+${amount} XP · ${reason}`, type: 'xp' });
+  }
 
   function track(code: string, message: string) {
     setEvents((prev) => [{ code, message, at: nowLabel() }, ...prev].slice(0, 15));
@@ -153,101 +172,27 @@ export function useFidelityState() {
     return () => clearTimeout(timer);
   }, [statusText]);
 
-  useEffect(() => {
-    if (!meetGreetQrExpiresAt) {
-      return;
-    }
-    const expiresAtMs = new Date(meetGreetQrExpiresAt).getTime();
-    const delay = expiresAtMs - Date.now();
-    if (delay <= 0) {
-      setMeetGreetQrToken('');
-      setMeetGreetQrExpiresAt('');
-      return;
-    }
-    const timer = setTimeout(() => {
-      setMeetGreetQrToken('');
-      setMeetGreetQrExpiresAt('');
-    }, delay);
-    return () => clearTimeout(timer);
-  }, [meetGreetQrExpiresAt]);
-
   function pushHistory(item: Omit<RewardHistoryItem, 'id' | 'at'>) {
     setRewardHistory((prev) => [{ id: `h-${Date.now()}-${Math.random()}`, at: nowLabel(), ...item }, ...prev].slice(0, 20));
   }
-
-  function getTierRarity(tierId: Tier['id']): NftAsset['rarity'] {
-    if (tierId === 1) {
-      return 'fan';
-    }
-    if (tierId === 2) {
-      return 'premium';
-    }
-    return 'legendary';
-  }
-
-  function pickAssetByRarity(rarity: NftAsset['rarity']): NftAsset {
-    return nftAssets.find((asset) => asset.rarity === rarity) ?? nftAssets[0];
-  }
-
-  function pickAssetForTier(tierId: Tier['id']): NftAsset {
-    if (tierId === 3) {
-      return (
-        nftAssets.find((asset) => asset.id === 'nft-superfan-mg-pass' || asset.name.includes('Meet & Greet Pass')) ??
-        pickAssetByRarity('legendary')
-      );
-    }
-    return pickAssetByRarity(getTierRarity(tierId));
-  }
-
-  function markNftImageError(assetId: string) {
-    setNftImageLoadErrors((prev) => ({ ...prev, [assetId]: true }));
-  }
-
-  async function syncNftData() {
-    setNftSyncing(true);
-    const [assetsResult, grantsResult, collectionResult, passResult] = await Promise.all([
-      fetchNftAssets(),
-      fetchNftGrants(),
-      fetchNftCollection(),
-      fetchMeetGreetPass()
-    ]);
-
-    if (assetsResult.ok && assetsResult.data?.assets) {
-      setNftAssets(assetsResult.data.assets);
-    }
-    if (grantsResult.ok && grantsResult.data?.grants) {
-      setNftGrants(grantsResult.data.grants);
-    }
-    if (collectionResult.ok && collectionResult.data?.collection) {
-      setNftCollection(collectionResult.data.collection);
-    }
-    if (passResult.ok && passResult.data) {
-      setMeetGreetPass(passResult.data);
-    }
-    setNftSyncing(false);
-  }
-
-  useEffect(() => {
-    void syncNftData();
-  }, []);
 
   const tiers: Tier[] = useMemo(() => {
     return [
       {
         id: 1,
-        title: 'Nivel 1 - NFT Belako',
+        title: 'Nivel 1 - Fan activo',
         requirement: '3 directos',
         unlocked: attendanceCount >= 3,
         progress: `${Math.min(attendanceCount, 3)}/3 directos`,
-        reward: 'NFT exclusivo de Belako (edicion fan)'
+        reward: '+30 BEL + boost de XP'
       },
       {
         id: 2,
-        title: 'Nivel 2 - NFT Belako firmado',
+        title: 'Nivel 2 - Fan premium',
         requirement: '10 directos + 50 EUR de gasto',
         unlocked: attendanceCount >= 10 && spend >= 50,
         progress: `${Math.min(attendanceCount, 10)}/10 directos | €${spend}/€50`,
-        reward: 'NFT premium de Belako con arte exclusivo'
+        reward: '+30 BEL + prioridad en recompensas'
       },
       {
         id: 3,
@@ -255,7 +200,7 @@ export function useFidelityState() {
         requirement: '20 directos + 150 EUR de gasto',
         unlocked: attendanceCount >= 20 && spend >= 150,
         progress: `${Math.min(attendanceCount, 20)}/20 directos | €${spend}/€150`,
-        reward: 'NFT Pass Superfan Meet & Greet'
+        reward: '+30 BEL + estado Superfan'
       }
     ];
   }, [attendanceCount, spend]);
@@ -266,18 +211,89 @@ export function useFidelityState() {
     return Math.min(80, base + superfan * 8);
   }, [attendanceCount, tiers]);
 
+  const currentLevel = useMemo(() => {
+    let level = 0;
+    for (let i = 0; i < seasonLevels.length; i += 1) {
+      if (seasonXp >= seasonLevels[i]) {
+        level = i;
+      }
+    }
+    return level;
+  }, [seasonXp]);
+
+  const nextLevelXp = useMemo(() => {
+    const next = seasonLevels[currentLevel + 1];
+    return next ?? seasonLevels[seasonLevels.length - 1];
+  }, [currentLevel]);
+
+  const seasonPass: GamificationState = useMemo(() => ({
+    seasonName: 'Temporada Sigo Regando',
+    seasonEndsAt: '2026-12-31T23:59:59.000Z',
+    currentXp: seasonXp,
+    currentLevel,
+    nextLevelXp,
+    streakDays
+  }), [currentLevel, nextLevelXp, seasonXp, streakDays]);
+
+  const seasonTiers: SeasonPassTier[] = useMemo(() => {
+    return [
+      { id: 'sp-1', title: 'Nivel 1', requiredXp: 100, rewardLabel: '+15 BEL', claimed: claimedSeasonTierIds.includes('sp-1') },
+      { id: 'sp-2', title: 'Nivel 2', requiredXp: 220, rewardLabel: 'Drop early access', claimed: claimedSeasonTierIds.includes('sp-2') },
+      { id: 'sp-3', title: 'Nivel 3', requiredXp: 380, rewardLabel: '+25 BEL', claimed: claimedSeasonTierIds.includes('sp-3') },
+      { id: 'sp-4', title: 'Nivel 4', requiredXp: 580, rewardLabel: 'Acceso anticipado a drops', claimed: claimedSeasonTierIds.includes('sp-4') },
+      { id: 'sp-5', title: 'Nivel 5', requiredXp: 820, rewardLabel: 'Perk superfan unlock', claimed: claimedSeasonTierIds.includes('sp-5') }
+    ];
+  }, [claimedSeasonTierIds]);
+
+  const seasonMissions: SeasonMission[] = useMemo(() => {
+    const definitions = [
+      {
+        id: 'm-watch-minute',
+        title: 'Asistencia exprés',
+        description: 'Ver 1 min en 3 directos esta semana',
+        progress: watchMinuteCount,
+        goal: 3,
+        xpReward: 30
+      },
+      {
+        id: 'm-full-live',
+        title: 'Directo completo',
+        description: 'Ver 1 directo entero',
+        progress: fullWatchCount,
+        goal: 1,
+        xpReward: 50
+      },
+      {
+        id: 'm-first-purchase',
+        title: 'Merch supporter',
+        description: 'Completar 1 compra en la tienda',
+        progress: purchaseCount,
+        goal: 1,
+        xpReward: 80
+      },
+      {
+        id: 'm-tier-claim',
+        title: 'Ascenso fan',
+        description: 'Reclamar 1 nivel de fidelidad',
+        progress: tierClaimCount,
+        goal: 1,
+        xpReward: 40
+      },
+    ];
+
+    return definitions.map((mission) => {
+      const completed = mission.progress >= mission.goal;
+      const claimed = claimedMissionIds.includes(mission.id);
+      return {
+        ...mission,
+        status: claimed ? 'claimed' : completed ? 'completed' : 'active'
+      };
+    });
+  }, [claimedMissionIds, fullWatchCount, purchaseCount, tierClaimCount, watchMinuteCount]);
+
   const canUseCoinDiscount = belakoCoins >= coinPolicy.discountCost;
   const currentStreamFullyWatched = fullyWatchedStreamIds.includes(activeStream.id);
   const fullLiveRewardUnlocked = fullyWatchedStreamIds.length > 0;
-  const ownedNfts: OwnedNft[] = useMemo(() => {
-    return nftCollection.map((item) => ({
-      id: item.id,
-      assetId: item.assetId,
-      mintedAt: new Date(item.mintedAt).toLocaleString(),
-      originTier: item.assetId.includes('legendary') ? 3 : item.assetId.includes('premium') ? 2 : 1
-    }));
-  }, [nftCollection]);
-
   function completeOnboarding() {
     const next = onboardingStep + 1;
     if (next >= 3) {
@@ -291,8 +307,11 @@ export function useFidelityState() {
   }
 
   function watchMinute() {
+    registerDailyActivity();
+    setWatchMinuteCount((prev) => prev + 1);
     setAttendanceCount((n) => n + 1);
     setBelakoCoins((n) => n + coinPolicy.watchReward);
+    addXp(xpPolicy.watchMinute, 'Asistencia de 1 minuto');
     setStatusText(`Asistencia verificada. +${coinPolicy.watchReward} BEL.`);
     track('EVT_belako_coin_earned', 'Belako Coin ganado por ver directo');
     notify('Belako Coin', `Has ganado +${coinPolicy.watchReward} BEL por ver el directo.`);
@@ -304,22 +323,14 @@ export function useFidelityState() {
       setStatusText('Ya has completado este directo.');
       return;
     }
+    registerDailyActivity();
+    setFullWatchCount((prev) => prev + 1);
     setFullyWatchedStreamIds((prev) => [...prev, activeStream.id]);
     setAttendanceCount((n) => n + 1);
+    addXp(xpPolicy.fullLive, 'Directo completo');
     setStatusText('Directo completo visto. Recompensa especial desbloqueada.');
     track('EVT_stream_full_watch', `Directo completo visto: ${activeStream.id}`);
-    const fullWatchAsset = pickAssetByRarity('fan');
-    const attendanceResult = await verifyAttendanceAndGrant({
-      streamId: activeStream.id,
-      rewardAssetId: fullWatchAsset.id
-    });
-    if (attendanceResult.ok && attendanceResult.data?.grant) {
-      const grant = attendanceResult.data.grant;
-      setNftGrants((prev) => [grant, ...prev.filter((item) => item.id !== grant.id)]);
-      notify('Recompensa desbloqueada', 'NFT pendiente disponible por ver el directo entero.');
-    } else {
-      notify('Recompensa desbloqueada', 'Ya puedes reclamar la recompensa por ver directo entero.');
-    }
+    notify('Recompensa desbloqueada', 'Ya puedes reclamar la recompensa por ver directo entero.');
     pushHistory({ label: `Directo completo: ${activeStream.title}`, type: 'reward' });
   }
 
@@ -342,12 +353,13 @@ export function useFidelityState() {
   }
 
   function openCheckout(product: Product, mode: CheckoutMode = 'fiat') {
+    const normalizedMode: CheckoutMode = product.purchaseType === 'eur_only' ? 'fiat' : mode;
     setSelectedProduct(product);
     setSheet('checkout');
-    setCheckoutMode(mode);
+    setCheckoutMode(normalizedMode);
     setCheckoutError('');
-    setCheckoutUseCoinDiscount(mode === 'fiat' ? false : false);
-    track('EVT_merch_checkout_started', `${mode === 'coin' ? 'Canje' : 'Checkout'} abierto para ${product.name}`);
+    setCheckoutUseCoinDiscount(false);
+    track('EVT_merch_checkout_started', `${normalizedMode === 'coin' ? 'Canje' : 'Checkout'} abierto para ${product.name}`);
   }
 
   function updateCheckoutField<K extends keyof CheckoutForm>(field: K, value: CheckoutForm[K]) {
@@ -394,20 +406,26 @@ export function useFidelityState() {
     }
 
     if (checkoutMode === 'coin') {
-      if (belakoCoins < selectedProduct.belakoCoinCost) {
-        setCheckoutError(`Saldo BEL insuficiente. Necesitas ${selectedProduct.belakoCoinCost} BEL.`);
+      if (selectedProduct.belakoCoinCost == null) {
+        setCheckoutError('Este producto solo permite compra en euros.');
+        setCheckoutProcessing(false);
+        return;
+      }
+      const coinCost = selectedProduct.belakoCoinCost;
+      if (belakoCoins < coinCost) {
+        setCheckoutError(`Saldo BEL insuficiente. Necesitas ${coinCost} BEL.`);
         setCheckoutProcessing(false);
         return;
       }
 
-      setBelakoCoins((n) => n - selectedProduct.belakoCoinCost);
+      setBelakoCoins((n) => n - coinCost);
       setSheet('none');
       setCheckoutProcessing(false);
       setCheckoutUseCoinDiscount(false);
       setStatusText(`Canje confirmado: ${selectedProduct.name}.`);
       track('EVT_reward_redeemed', `Canje en BEL completado para ${selectedProduct.name}`);
       notify('Canje completado', `${selectedProduct.name} añadido a tus pedidos.`);
-      pushHistory({ label: `Canje ${selectedProduct.name} (${selectedProduct.belakoCoinCost} BEL)`, type: 'reward' });
+      pushHistory({ label: `Canje ${selectedProduct.name} (${coinCost} BEL)`, type: 'reward' });
       return;
     }
 
@@ -452,78 +470,54 @@ export function useFidelityState() {
       return;
     }
 
+    registerDailyActivity();
+    setTierClaimCount((prev) => prev + 1);
     setClaimedTierIds((prev) => [...prev, tier.id]);
     setBelakoCoins((n) => n + coinPolicy.claimReward);
-
-    const selectedAsset = pickAssetForTier(tier.id);
-    const grantResult = await createNftGrant({
-      assetId: selectedAsset.id,
-      originType: 'TIER',
-      originRef: `tier-${tier.id}`
-    });
-
-    if (grantResult.ok && grantResult.data?.grant) {
-      const grant = grantResult.data.grant;
-      setNftGrants((prev) => [grant, ...prev.filter((item) => item.id !== grant.id)]);
-      setStatusText(`Grant NFT creado para ${tier.title}. Reclámalo para mintear en Polygon.`);
-      notify('NFT disponible', `Grant creado: ${selectedAsset.name}. Reclámalo desde Recompensas.`);
-      track('EVT_reward_claimed', `Grant NFT creado al reclamar ${tier.title}`);
-      pushHistory({ label: `Grant NFT creado: ${selectedAsset.name}`, type: 'nft' });
-    } else {
-      setStatusText('No se pudo crear el grant NFT. Intenta de nuevo.');
-      notify('Error NFT', grantResult.error || 'No se pudo crear el grant.');
-    }
+    addXp(xpPolicy.tierClaim, `Claim ${tier.title}`);
+    setStatusText(`Recompensa reclamada para ${tier.title}.`);
+    notify('Recompensa reclamada', `${tier.title} completado con éxito.`);
+    track('EVT_reward_claimed', `Recompensa reclamada: ${tier.title}`);
 
     pushHistory({ label: `Claim de ${tier.title}`, type: 'reward' });
     pushHistory({ label: `+${coinPolicy.claimReward} BEL por reclamar recompensa`, type: 'coin' });
   }
 
-  async function claimPendingNftGrant(grantId: string) {
-    setNftClaimLoadingById((prev) => ({ ...prev, [grantId]: true }));
-    setNftClaimErrorById((prev) => ({ ...prev, [grantId]: '' }));
-
-    const result = await claimNftGrant(grantId);
-    setNftClaimLoadingById((prev) => ({ ...prev, [grantId]: false }));
-
-    if (!result.ok || !result.data?.grant) {
-      const errorMessage = result.error || 'No se pudo reclamar el NFT.';
-      setNftClaimErrorById((prev) => ({ ...prev, [grantId]: errorMessage }));
-      setStatusText(errorMessage);
+  function claimSeasonPassTier(tierId: string) {
+    const tier = seasonTiers.find((item) => item.id === tierId);
+    if (!tier || tier.claimed) {
+      return;
+    }
+    if (seasonXp < tier.requiredXp) {
+      setStatusText('Aún no alcanzas el XP requerido para este nivel.');
       return;
     }
 
-    const updatedGrant = result.data.grant;
-    setNftGrants((prev) => [updatedGrant, ...prev.filter((item) => item.id !== updatedGrant.id)]);
-
-    if (result.data.collectible) {
-      const collectible = result.data.collectible;
-      const mintedAsset = nftAssets.find((asset) => asset.id === collectible.assetId);
-      const isSuperfanPass = mintedAsset?.id === 'nft-superfan-mg-pass';
-      setNftCollection((prev) => [collectible, ...prev.filter((item) => item.id !== collectible.id)]);
-      const passResult = await fetchMeetGreetPass();
-      if (passResult.ok && passResult.data) {
-        setMeetGreetPass(passResult.data);
-      }
-      setLatestMintedNftId(collectible.id);
-      setSheet('reward');
-      setStatusText(
-        isSuperfanPass
-          ? 'NFT Pass Superfan minteado. Ya puedes usar Meet & Greet.'
-          : 'NFT minteado en Polygon y añadido a tu colección.'
-      );
-      notify(
-        isSuperfanPass ? 'NFT Pass Superfan minteado' : 'NFT minteado',
-        isSuperfanPass
-          ? 'Tu pase de acceso Meet & Greet ya está activo.'
-          : `Tx ${collectible.txHash.slice(0, 12)}... confirmado.`
-      );
-      pushHistory({
-        label: isSuperfanPass ? 'NFT Pass Superfan minteado' : `NFT minteado (${collectible.tokenId})`,
-        type: 'nft'
-      });
-    } else {
-      setStatusText('Grant actualizado.');
+    setClaimedSeasonTierIds((prev) => [...prev, tierId]);
+    if (tierId === 'sp-1') {
+      setBelakoCoins((prev) => prev + 15);
+      pushHistory({ label: 'Battle Pass: +15 BEL', type: 'coin' });
     }
+    if (tierId === 'sp-3') {
+      setBelakoCoins((prev) => prev + 25);
+      pushHistory({ label: 'Battle Pass: +25 BEL', type: 'coin' });
+    }
+
+    notify('Battle Pass', `Recompensa reclamada: ${tier.rewardLabel}`);
+    track('EVT_battle_pass_tier_claimed', `Tier BP reclamado: ${tier.title}`);
+    pushHistory({ label: `Battle Pass ${tier.title}: ${tier.rewardLabel}`, type: 'reward' });
+  }
+
+  function claimSeasonMission(missionId: string) {
+    const mission = seasonMissions.find((item) => item.id === missionId);
+    if (!mission || mission.status !== 'completed') {
+      return;
+    }
+    setClaimedMissionIds((prev) => [...prev, missionId]);
+    addXp(mission.xpReward + xpPolicy.missionClaimBonus, mission.title);
+    notify('Misión reclamada', `${mission.title} completada (+${mission.xpReward + xpPolicy.missionClaimBonus} XP).`);
+    track('EVT_mission_claimed', `Misión reclamada: ${mission.title}`);
+    pushHistory({ label: `Misión ${mission.title} reclamada`, type: 'reward' });
   }
 
   function nextStream() {
@@ -558,30 +552,6 @@ export function useFidelityState() {
     setNotifications([]);
   }
 
-  async function refreshMeetGreetPass() {
-    const passResult = await fetchMeetGreetPass();
-    if (passResult.ok && passResult.data) {
-      setMeetGreetPass(passResult.data);
-    }
-  }
-
-  async function generateMeetGreetQr() {
-    setMeetGreetQrLoading(true);
-    const result = await createMeetGreetQrToken();
-    setMeetGreetQrLoading(false);
-
-    if (!result.ok || !result.data) {
-      setStatusText(result.error || 'No se pudo generar el QR.');
-      notify('Error QR', result.error || 'No se pudo generar el QR de acceso.');
-      return;
-    }
-
-    setMeetGreetQrToken(result.data.qrToken);
-    setMeetGreetQrExpiresAt(result.data.expiresAt);
-    notify('Pase QR generado', 'Presenta este QR en la entrada del meet & greet.');
-    track('EVT_meet_greet_qr_generated', 'QR de acceso meet & greet generado');
-  }
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const checkoutState = params.get('checkout');
@@ -592,8 +562,11 @@ export function useFidelityState() {
       const usedCoinDiscount = params.get('coinDiscount') === '1';
       const amountPaid = Number.isFinite(total) && total > 0 ? total : selectedProduct.fiatPrice;
 
+      registerDailyActivity();
+      setPurchaseCount((prev) => prev + 1);
       setSpend((n) => n + amountPaid);
       setBelakoCoins((n) => n + coinPolicy.purchaseReward - (usedCoinDiscount ? coinPolicy.discountCost : 0));
+      addXp(xpPolicy.purchase, `Compra ${productName}`);
       setSheet('none');
       setCheckoutProcessing(false);
       setCheckoutUseCoinDiscount(false);
@@ -642,30 +615,18 @@ export function useFidelityState() {
     events,
     notifications,
     rewardHistory,
-    nftSyncing,
-    nftGrants,
-    nftCollection,
-    nftClaimLoadingById,
-    nftClaimErrorById,
-    ownedNfts,
-    nftAssets,
-    nftImageLoadErrors,
-    latestMintedNftId,
-    meetGreetPass,
-    meetGreetQrToken,
-    meetGreetQrExpiresAt,
-    meetGreetQrLoading,
+    seasonPass,
+    seasonTiers,
+    seasonMissions,
     tiers,
     conversion,
     setFanTab,
     setOnboardingDone,
     setSheet,
-    markNftImageError,
     completeOnboarding,
     watchMinute,
     watchFullLive,
     claimFullLiveReward,
-    claimPendingNftGrant,
     openCheckout,
     updateCheckoutField,
     toggleCoinDiscount,
@@ -675,9 +636,8 @@ export function useFidelityState() {
     toggleReconnectState,
     endStream,
     clearNotifications,
-    syncNftData,
-    refreshMeetGreetPass,
-    generateMeetGreetQr,
+    claimSeasonPassTier,
+    claimSeasonMission,
     track
   };
 }

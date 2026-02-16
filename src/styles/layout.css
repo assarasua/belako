@@ -224,7 +224,7 @@
 
   .row,
   .checkout-row,
-  .store-filter-row,
+  .store-sort-row,
   .onboarding-actions {
     grid-template-columns: 1fr;
   }

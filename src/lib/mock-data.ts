@@ -1,4 +1,4 @@
-import type { NftAsset, Product, Stream } from './types';
+import type { Product, Stream } from './types';
 
 export const streams: Stream[] = [
   {
@@ -76,46 +76,85 @@ export const streams: Stream[] = [
 ];
 
 export const products: Product[] = [
-  { id: 'p1', name: 'Púa firmada Belako', fiatPrice: 25, belakoCoinCost: 120, limited: true },
-  { id: 'p2', name: 'Camiseta Gira Belako (Drop Premium)', fiatPrice: 45, belakoCoinCost: 240, limited: true },
-  { id: 'p3', name: 'Fanzine backstage Belako', fiatPrice: 18, belakoCoinCost: 90, limited: false }
-];
-
-export const officialBelakoNftAssets: NftAsset[] = [
   {
-    id: 'nft-fan-01',
-    name: 'Belako Banda - Fan Edition',
-    imageUrl: 'https://www.belakoband.com/cdn/shop/files/Belako_Banda.jpg?v=1753809570',
-    rarity: 'fan',
-    source: 'official-web'
+    id: 'csv-001',
+    name: 'Belako LP Vinilo 12" Transparente Ed. limitada "Sigo regando"',
+    fiatPrice: 26.95,
+    imageUrl: 'https://www.d2fy.es/cdn/shop/products/belako-lp-vinilo-12-transparente-ed-limitada-sigo-regando-432285_1200x.jpg?v=1687479972',
+    purchaseType: 'eur_only',
+    limited: false
   },
   {
-    id: 'nft-premium-01',
-    name: 'Belako Grupo - Premium Shot',
-    imageUrl: 'https://www.belakoband.com/cdn/shop/files/Belako_grupo.jpg?v=1753809570',
-    rarity: 'premium',
-    source: 'official-web'
+    id: 'csv-002',
+    name: 'Belako CD "Sigo regando"',
+    fiatPrice: 12.95,
+    imageUrl: 'https://www.d2fy.es/cdn/shop/products/belako-cd-sigo-regando-312426_1200x.jpg?v=1687479972',
+    purchaseType: 'eur_only',
+    limited: false
   },
   {
-    id: 'nft-legendary-01',
-    name: 'Belako Press Band - Legendary',
-    imageUrl: 'https://www.belakoband.com/cdn/shop/files/Belako_PRESS_Band_1.jpg?v=1753809570',
-    rarity: 'legendary',
-    source: 'official-web'
+    id: 'csv-003',
+    name: 'Belako Camiseta "Sigo Regando" Negra',
+    fiatPrice: 19.99,
+    imageUrl: 'https://www.d2fy.es/cdn/shop/products/belako-camiseta-sigo-regando-negra-909582_1200x.jpg?v=1697158568',
+    purchaseType: 'eur_only',
+    limited: false
   },
   {
-    id: 'nft-superfan-mg-pass',
-    name: 'Belako Superfan Meet & Greet Pass',
-    imageUrl: 'https://www.belakoband.com/cdn/shop/files/Belako_grupo.jpg?v=1753809570',
-    rarity: 'legendary',
-    source: 'official-web'
+    id: 'csv-004',
+    name: 'Belako Camiseta "Sigo Regando" Blanca',
+    fiatPrice: 19.99,
+    imageUrl: 'https://www.d2fy.es/cdn/shop/products/belako-camiseta-sigo-regando-blanca-190247_1200x.jpg?v=1697158567',
+    purchaseType: 'eur_only',
+    limited: false
   },
   {
-    id: 'nft-fan-02',
-    name: 'Belako Press Band - Fan Alt',
-    imageUrl: 'https://www.belakoband.com/cdn/shop/files/Belako_PRESS_Band_1.jpg?v=1753809570',
-    rarity: 'fan',
-    source: 'official-web'
+    id: 'csv-005',
+    name: 'Belako Camiseta "Europe 2022"',
+    fiatPrice: 15.95,
+    imageUrl: 'https://www.d2fy.es/cdn/shop/products/belako-camiseta-europe-2022-807549_1200x.jpg?v=1697158563',
+    purchaseType: 'eur_only',
+    limited: false
+  },
+  {
+    id: 'csv-006',
+    name: 'Belako Camiseta "Europe 2022"',
+    fiatPrice: 15.95,
+    imageUrl: 'https://www.d2fy.es/cdn/shop/products/camiseta-european-tour-belako-396367_1200x.jpg?v=1668157220',
+    purchaseType: 'eur_only',
+    limited: false
+  },
+  {
+    id: 'csv-007',
+    name: 'Belako Camiseta Edición Especial Fin de Gira',
+    fiatPrice: 17,
+    imageUrl: 'https://www.d2fy.es/cdn/shop/products/camiseta-edicion-especial-fin-de-gira-969633_600x.jpg?v=1649337593',
+    purchaseType: 'eur_only',
+    limited: false
+  },
+  {
+    id: 'csv-008',
+    name: 'Belako Camiseta Fuego - Negra',
+    fiatPrice: 14,
+    imageUrl: 'https://www.d2fy.es/cdn/shop/products/camiseta-belako-negra-fuego-129088_600x.jpg?v=1649337593',
+    purchaseType: 'eur_only',
+    limited: false
+  },
+  {
+    id: 'csv-009',
+    name: 'Belako Camiseta Fuego - Blanca',
+    fiatPrice: 14,
+    imageUrl: 'https://www.d2fy.es/cdn/shop/products/camiseta-belako-blanca-fuego-961502_600x.jpg?v=1649337593',
+    purchaseType: 'eur_only',
+    limited: false
+  },
+  {
+    id: 'csv-010',
+    name: 'Belako Sudadera Capucha Fuego - Negra',
+    fiatPrice: 34.95,
+    imageUrl: 'https://www.d2fy.es/cdn/shop/products/sudadera-capucha-belako-negra-fuego-327412_600x.jpg?v=1649337898',
+    purchaseType: 'eur_only',
+    limited: false
   }
 ];
 
