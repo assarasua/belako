@@ -13,6 +13,8 @@ export type Stream = {
   rewardHint: string;
   genre: string;
   colorClass: string;
+  youtubeUrl?: string;
+  isActive?: boolean;
 };
 
 export type ConcertTicket = {
@@ -22,6 +24,8 @@ export type ConcertTicket = {
   city: string;
   startsAt: string;
   priceEur: number;
+  ticketUrl?: string;
+  isActive?: boolean;
 };
 
 export type Product = {
@@ -30,6 +34,7 @@ export type Product = {
   fiatPrice: number;
   imageUrl: string;
   limited: boolean;
+  isActive?: boolean;
 };
 
 export type StorePriceSort = 'price_asc' | 'price_desc';
@@ -42,6 +47,35 @@ export type Tier = {
   current: boolean;
   progressLabel: string;
   perkLabel: string;
+};
+
+export type XpAction = {
+  code: 'join_live' | 'watch_full_live' | 'buy_merch' | 'buy_ticket';
+  label: string;
+  xpValue: number;
+  enabled: boolean;
+};
+
+export type DynamicReward = {
+  id: string;
+  title: string;
+  description: string;
+  triggerType: 'watch_full_live' | 'xp_threshold' | 'purchase';
+  xpBonus: number;
+  active: boolean;
+};
+
+export type RewardsConfig = {
+  tiers: Array<{
+    id: 'fan' | 'super' | 'ultra' | 'god';
+    title: string;
+    requiredXp: number;
+    perkLabel: string;
+    sortOrder: number;
+    active: boolean;
+  }>;
+  xpActions: XpAction[];
+  rewards: DynamicReward[];
 };
 
 export type EventItem = {

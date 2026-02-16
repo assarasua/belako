@@ -3,16 +3,20 @@ import { concertTickets, products, streams, nowLabel } from '../lib/mock-data';
 import type {
   Address,
   BillingProfile,
+  ConcertTicket,
+  DynamicReward,
   EventItem,
   FanTab,
   LiveState,
   NotificationItem,
   NotificationPreferenceKey,
   PurchaseRecord,
+  RewardsConfig,
   ProfileSettings,
   Product,
   RewardHistoryItem,
   SheetState,
+  Stream,
   Tier
 } from '../lib/types';
 import {
@@ -22,7 +26,11 @@ import {
   createSetupIntent,
   createStripeCheckoutSession,
   fetchAuthSession,
+  fetchConcerts,
+  fetchLives,
   fetchPaymentMethods,
+  fetchRewardsConfig,
+  fetchStoreItems,
   fetchStripeInvoice,
   fetchStripeConfig,
   loginWithGoogle,
@@ -63,18 +71,57 @@ const defaultCheckoutForm: CheckoutForm = {
   acceptedPolicy: false
 };
 
-const xpPolicy = {
+const fallbackXpPolicy = {
   liveJoin: 20,
   fullLive: 50,
   purchase: 80,
   inPersonTicket: 120
 };
-const JOURNEY_THRESHOLDS = {
-  fan: 0,
-  super: 180,
-  ultra: 420,
-  god: 760
-} as const;
+const fallbackJourneyTiers: RewardsConfig['tiers'] = [
+  {
+    id: 'fan',
+    title: 'Fan Belako',
+    requiredXp: 0,
+    perkLabel: 'Acceso base a recompensas fan',
+    sortOrder: 1,
+    active: true
+  },
+  {
+    id: 'super',
+    title: 'Super Fan Belako',
+    requiredXp: 180,
+    perkLabel: 'Insignia Super Fan + prioridad en drops',
+    sortOrder: 2,
+    active: true
+  },
+  {
+    id: 'ultra',
+    title: 'Ultra Fan Belako',
+    requiredXp: 420,
+    perkLabel: 'Acceso anticipado a experiencias exclusivas',
+    sortOrder: 3,
+    active: true
+  },
+  {
+    id: 'god',
+    title: 'God Fan Belako',
+    requiredXp: 760,
+    perkLabel: 'Estado máximo de la comunidad Belako',
+    sortOrder: 4,
+    active: true
+  }
+];
+
+const fallbackRewards: DynamicReward[] = [
+  {
+    id: 'rw-full-live',
+    title: 'Recompensa directo completo',
+    description: 'Completa un directo entero para reclamar bonus de fan.',
+    triggerType: 'watch_full_live',
+    xpBonus: 50,
+    active: true
+  }
+];
 
 const defaultProfileSettings: ProfileSettings = {
   displayName: '',
@@ -215,6 +262,19 @@ export function useFidelityState() {
   const [streamIndex, setStreamIndex] = useState(0);
   const [liveState, setLiveState] = useState<LiveState>('live');
   const [sheet, setSheet] = useState<SheetState>('none');
+  const [liveCatalog, setLiveCatalog] = useState<Stream[]>(streams);
+  const [storeCatalog, setStoreCatalog] = useState<Product[]>(products);
+  const [concertCatalog, setConcertCatalog] = useState<ConcertTicket[]>(concertTickets);
+  const [rewardsConfig, setRewardsConfig] = useState<RewardsConfig>({
+    tiers: fallbackJourneyTiers,
+    xpActions: [
+      { code: 'join_live', label: 'Unirte a directos en vivo', xpValue: 20, enabled: true },
+      { code: 'watch_full_live', label: 'Ver directo entero', xpValue: 50, enabled: true },
+      { code: 'buy_merch', label: 'Comprar merchandising', xpValue: 80, enabled: true },
+      { code: 'buy_ticket', label: 'Comprar billetes para conciertos', xpValue: 120, enabled: true }
+    ],
+    rewards: fallbackRewards
+  });
 
   const [attendanceCount, setAttendanceCount] = useState(0);
   const [spend, setSpend] = useState(0);
@@ -266,7 +326,17 @@ export function useFidelityState() {
   const [highestJourneyTierId, setHighestJourneyTierId] = useState<Tier['id']>('fan');
   const [progressLastSavedAt, setProgressLastSavedAt] = useState('');
 
-  const activeStream = streams[streamIndex];
+  const activeStream = liveCatalog[streamIndex] || liveCatalog[0] || streams[0];
+
+  const xpPolicy = useMemo(() => {
+    const byCode = new Map(rewardsConfig.xpActions.map((item) => [item.code, item]));
+    return {
+      liveJoin: byCode.get('join_live')?.xpValue ?? fallbackXpPolicy.liveJoin,
+      fullLive: byCode.get('watch_full_live')?.xpValue ?? fallbackXpPolicy.fullLive,
+      purchase: byCode.get('buy_merch')?.xpValue ?? fallbackXpPolicy.purchase,
+      inPersonTicket: byCode.get('buy_ticket')?.xpValue ?? fallbackXpPolicy.inPersonTicket
+    };
+  }, [rewardsConfig.xpActions]);
 
   function pushHistory(item: Omit<RewardHistoryItem, 'id' | 'at'>) {
     setRewardHistory((prev) => [{ id: `h-${Date.now()}-${Math.random()}`, at: nowLabel(), ...item }, ...prev].slice(0, 20));
@@ -345,6 +415,45 @@ export function useFidelityState() {
     }
 
     void bootstrapSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCatalog() {
+      const [storeResult, concertResult, liveResult, rewardsResult] = await Promise.all([
+        fetchStoreItems(),
+        fetchConcerts(),
+        fetchLives(),
+        fetchRewardsConfig()
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (storeResult.ok && storeResult.data?.length) {
+        const nextStoreItems = storeResult.data;
+        setStoreCatalog(nextStoreItems);
+        setSelectedProduct((prev) => nextStoreItems.find((item) => item.id === prev.id) || nextStoreItems[0] || prev);
+      }
+
+      if (concertResult.ok && concertResult.data?.length) {
+        setConcertCatalog(concertResult.data);
+      }
+
+      if (liveResult.ok && liveResult.data?.length) {
+        setLiveCatalog(liveResult.data);
+      }
+
+      if (rewardsResult.ok && rewardsResult.data) {
+        setRewardsConfig(rewardsResult.data);
+      }
+    }
+
+    void loadCatalog();
     return () => {
       cancelled = true;
     };
@@ -573,59 +682,52 @@ export function useFidelityState() {
     initializeBilling();
   }, [authStatus, profileSavedCardsEnabled]);
 
+  const activeTierConfig = useMemo(
+    () =>
+      [...rewardsConfig.tiers]
+        .filter((tier) => tier.active)
+        .sort((a, b) => a.sortOrder - b.sortOrder),
+    [rewardsConfig.tiers]
+  );
+
   const currentJourneyTierId = useMemo<Tier['id']>(() => {
-    if (journeyXp >= JOURNEY_THRESHOLDS.god) {
-      return 'god';
-    }
-    if (journeyXp >= JOURNEY_THRESHOLDS.ultra) {
-      return 'ultra';
-    }
-    if (journeyXp >= JOURNEY_THRESHOLDS.super) {
-      return 'super';
-    }
-    return 'fan';
-  }, [journeyXp]);
+    const fallback = activeTierConfig[0]?.id || 'fan';
+    return (
+      activeTierConfig
+        .filter((tier) => journeyXp >= tier.requiredXp)
+        .sort((a, b) => b.requiredXp - a.requiredXp)[0]?.id || fallback
+    );
+  }, [activeTierConfig, journeyXp]);
 
   const journeyTiers: Tier[] = useMemo(() => {
-    return [
-      {
-        id: 'fan',
-        title: 'Fan Belako',
-        requiredXp: JOURNEY_THRESHOLDS.fan,
-        unlocked: journeyXp >= JOURNEY_THRESHOLDS.fan,
-        current: currentJourneyTierId === 'fan',
-        progressLabel: `${journeyXp}/${JOURNEY_THRESHOLDS.super} XP`,
-        perkLabel: 'Acceso base a recompensas fan'
-      },
-      {
-        id: 'super',
-        title: 'Super Fan Belako',
-        requiredXp: JOURNEY_THRESHOLDS.super,
-        unlocked: journeyXp >= JOURNEY_THRESHOLDS.super,
-        current: currentJourneyTierId === 'super',
-        progressLabel: `${journeyXp}/${JOURNEY_THRESHOLDS.ultra} XP`,
-        perkLabel: 'Insignia Super Fan + prioridad en drops'
-      },
-      {
-        id: 'ultra',
-        title: 'Ultra Fan Belako',
-        requiredXp: JOURNEY_THRESHOLDS.ultra,
-        unlocked: journeyXp >= JOURNEY_THRESHOLDS.ultra,
-        current: currentJourneyTierId === 'ultra',
-        progressLabel: `${journeyXp}/${JOURNEY_THRESHOLDS.god} XP`,
-        perkLabel: 'Acceso anticipado a experiencias exclusivas'
-      },
-      {
-        id: 'god',
-        title: 'God Fan Belako',
-        requiredXp: JOURNEY_THRESHOLDS.god,
-        unlocked: journeyXp >= JOURNEY_THRESHOLDS.god,
-        current: currentJourneyTierId === 'god',
-        progressLabel: `${journeyXp} XP · MAX`,
-        perkLabel: 'Estado máximo de la comunidad Belako'
-      }
-    ];
-  }, [currentJourneyTierId, journeyXp]);
+    if (activeTierConfig.length === 0) {
+      return fallbackJourneyTiers.map((tier, index) => ({
+        id: tier.id,
+        title: tier.title,
+        requiredXp: tier.requiredXp,
+        unlocked: journeyXp >= tier.requiredXp,
+        current: tier.id === currentJourneyTierId,
+        progressLabel:
+          fallbackJourneyTiers[index + 1]
+            ? `${journeyXp}/${fallbackJourneyTiers[index + 1].requiredXp} XP`
+            : `${journeyXp} XP · MAX`,
+        perkLabel: tier.perkLabel
+      }));
+    }
+
+    return activeTierConfig.map((tier, index) => {
+      const nextTier = activeTierConfig[index + 1];
+      return {
+        id: tier.id,
+        title: tier.title,
+        requiredXp: tier.requiredXp,
+        unlocked: journeyXp >= tier.requiredXp,
+        current: tier.id === currentJourneyTierId,
+        progressLabel: nextTier ? `${journeyXp}/${nextTier.requiredXp} XP` : `${journeyXp} XP · MAX`,
+        perkLabel: tier.perkLabel
+      };
+    });
+  }, [activeTierConfig, currentJourneyTierId, journeyXp]);
 
   const currentJourneyTier = useMemo(
     () => journeyTiers.find((tier) => tier.id === currentJourneyTierId) || journeyTiers[0],
@@ -752,7 +854,7 @@ export function useFidelityState() {
   }
 
   function registerStreamReminder(streamId: string) {
-    const stream = streams.find((item) => item.id === streamId);
+    const stream = liveCatalog.find((item) => item.id === streamId);
     if (!stream) {
       return;
     }
@@ -764,7 +866,7 @@ export function useFidelityState() {
   }
 
   function openConcertTicketCheckout(ticketId: string) {
-    const ticket = concertTickets.find((item) => item.id === ticketId);
+    const ticket = concertCatalog.find((item) => item.id === ticketId);
     if (!ticket) {
       setStatusText('La entrada seleccionada no está disponible.');
       return;
@@ -788,7 +890,7 @@ export function useFidelityState() {
   }
 
   function joinLiveStream(streamId: string) {
-    const nextIndex = streams.findIndex((stream) => stream.id === streamId);
+    const nextIndex = liveCatalog.findIndex((stream) => stream.id === streamId);
     if (nextIndex < 0) {
       setStatusText('No se ha encontrado el directo.');
       return;
@@ -798,7 +900,7 @@ export function useFidelityState() {
     setLiveState('live');
     setSheet('none');
 
-    const stream = streams[nextIndex];
+    const stream = liveCatalog[nextIndex];
     track('EVT_stream_join', `Entró al directo de ${stream.artist}`);
 
     if (joinedLiveStreamIds.includes(streamId)) {
@@ -1283,14 +1385,14 @@ export function useFidelityState() {
   }
 
   function nextStream() {
-    if (streams.length === 0) {
+    if (liveCatalog.length === 0) {
       setStatusText('No hay directos activos ahora mismo.');
       return;
     }
-    const next = (streamIndex + 1) % streams.length;
+    const next = (streamIndex + 1) % liveCatalog.length;
     setStreamIndex(next);
     setLiveState('live');
-    track('EVT_stream_join', `Entró al directo de ${streams[next].artist}`);
+    track('EVT_stream_join', `Entró al directo de ${liveCatalog[next].artist}`);
   }
 
   function toggleReconnectState() {
@@ -1355,7 +1457,11 @@ export function useFidelityState() {
     currentStreamFullyWatched,
     fullLiveRewardUnlocked,
     fullLiveRewardClaimed,
-    concertTickets,
+    liveCatalog,
+    storeCatalog,
+    concertCatalog,
+    dynamicRewards: rewardsConfig.rewards.filter((reward) => reward.active),
+    xpActions: rewardsConfig.xpActions.filter((action) => action.enabled),
     selectedProduct,
     journeyXp,
     journeyTiers,

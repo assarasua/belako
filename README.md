@@ -14,10 +14,25 @@ npm run dev
 cd /Users/axi/Documents/fidelity-app/backend
 cp .env.example .env
 npm install
+npm run db:generate
+npm run db:push
+npm run db:seed
 npm run dev
 ```
 
 Backend runs on `http://localhost:4000`.
+
+## Band Dashboard
+
+```bash
+cd /Users/axi/Documents/fidelity-app/dashboard
+npm install
+npm run dev
+```
+
+Dashboard expects:
+- `VITE_API_BASE_URL=http://localhost:4000`
+- `VITE_GOOGLE_CLIENT_ID=<google_client_id>`
 
 ## Docker (backend + postgres)
 
@@ -27,8 +42,8 @@ docker compose up --build
 ```
 
 ## Implemented areas
-- Fan flow: onboarding, discovery/live, bids, rewards, wallet, token-gated store.
-- Artist flow: onboarding, go-live setup/controls, moderation, dashboards.
-- API scaffold: auth, loyalty, commerce, wallet/NFT, analytics.
+- Fan flow: onboarding, discovery/live, concerts, store, rewards journey.
+- Band flow: dashboard CMS for store/concerts/lives/rewards.
+- API scaffold: auth, catalog, dashboard CMS, loyalty, commerce, wallet/NFT, analytics.
 - Realtime scaffold: websocket chat channel.
 - Data model scaffold: Prisma schema for core entities.

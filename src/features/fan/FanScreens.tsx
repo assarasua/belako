@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { products, streams } from '../../lib/mock-data';
 import type { Address, ProfileSettings, StorePriceSort } from '../../lib/types';
 import type { FidelityModel } from '../../state/use-fidelity-state';
 
@@ -23,6 +22,25 @@ const emptyAddressDraft: AddressDraft = {
   country: 'España'
 };
 const LIVE_EMBED_URL = 'https://www.youtube.com/embed/l7TlAz1HvSk?start=650&autoplay=1&rel=0';
+
+function toEmbedUrl(url: string | undefined): string {
+  if (!url) {
+    return LIVE_EMBED_URL;
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes('youtube.com') && parsed.pathname === '/watch') {
+      const videoId = parsed.searchParams.get('v');
+      const start = parsed.searchParams.get('t') || parsed.searchParams.get('start') || '0';
+      if (videoId) {
+        return `https://www.youtube.com/embed/${videoId}?start=${String(start).replace(/s$/, '')}&autoplay=1&rel=0`;
+      }
+    }
+  } catch {
+    return LIVE_EMBED_URL;
+  }
+  return LIVE_EMBED_URL;
+}
 
 function toAddressDraft(address: Address): AddressDraft {
   return {
@@ -55,7 +73,11 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     hasConcertTicket,
     fullLiveRewardUnlocked,
     fullLiveRewardClaimed,
-    concertTickets,
+    liveCatalog,
+    storeCatalog,
+    concertCatalog,
+    dynamicRewards,
+    xpActions,
     openCheckout,
     journeyXp,
     journeyTiers,
@@ -124,42 +146,42 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   }
 
   const sortedStoreProducts = useMemo(() => {
-    return [...products].sort((a, b) =>
+    return [...storeCatalog].sort((a, b) =>
       storeSort === 'price_desc'
         ? b.fiatPrice - a.fiatPrice
         : a.fiatPrice - b.fiatPrice
     );
-  }, [storeSort]);
+  }, [storeSort, storeCatalog]);
 
   const homeFeedStreams = useMemo(() => {
-    if (streams.length === 0) {
+    if (liveCatalog.length === 0) {
       return [];
     }
-    if (streams.length === 1) {
+    if (liveCatalog.length === 1) {
       return [];
     }
     return Array.from({ length: homeFeedCount }, (_, index) => {
-      const stream = streams[(index + 1) % streams.length];
+      const stream = liveCatalog[(index + 1) % liveCatalog.length];
       return {
         stream,
         virtualId: `${stream.id}-${index}`
       };
     });
-  }, [homeFeedCount]);
+  }, [homeFeedCount, liveCatalog]);
 
   const nextScheduledStream = useMemo(() => {
-    if (streams.length === 0) {
+    if (liveCatalog.length === 0) {
       return null;
     }
-    const currentIndex = streams.findIndex((item) => item.id === activeStream.id);
+    const currentIndex = liveCatalog.findIndex((item) => item.id === activeStream.id);
     if (currentIndex < 0) {
-      return streams[0];
+      return liveCatalog[0];
     }
-    return streams[(currentIndex + 1) % streams.length];
-  }, [activeStream.id]);
+    return liveCatalog[(currentIndex + 1) % liveCatalog.length];
+  }, [activeStream.id, liveCatalog]);
 
   useEffect(() => {
-    if (fanTab !== 'home' || streams.length === 0) {
+    if (fanTab !== 'home' || liveCatalog.length === 0) {
       return;
     }
     const sentinel = homeSentinelRef.current;
@@ -180,7 +202,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
 
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [fanTab, homeFeedStreams.length]);
+  }, [fanTab, homeFeedStreams.length, liveCatalog.length]);
 
   useEffect(() => {
     if (fanTab !== 'profile' || !lastCompletedPurchaseId) {
@@ -312,7 +334,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           </small>
         </article>
 
-        {streams.length === 0 ? (
+        {liveCatalog.length === 0 ? (
           <article className="metric-card empty-state">
             <h3>No hay directos ahora mismo</h3>
             <p>Te avisaremos cuando Belako empiece el siguiente show.</p>
@@ -368,7 +390,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
               <button className="ghost" onClick={() => setShowFullscreenLive(false)}>Cerrar</button>
             </div>
             <iframe
-              src={LIVE_EMBED_URL}
+              src={toEmbedUrl(activeStream.youtubeUrl)}
               title="Belako Live Fullscreen"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               referrerPolicy="strict-origin-when-cross-origin"
@@ -391,7 +413,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         <article className="metric-card">
           <p>Próximos conciertos</p>
           <div className="xp-action-list">
-            {concertTickets.map((ticket) => {
+            {concertCatalog.map((ticket) => {
               const purchased = hasConcertTicket(ticket.id);
               return (
                 <article key={ticket.id} className="xp-action-item">
@@ -502,23 +524,35 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         <article className="metric-card">
           <p>Cómo ganar experiencia</p>
           <div className="xp-action-list">
-            <div className="xp-action-item">
-              <strong>Unirte a directos en vivo</strong>
-              <small>+20 XP por cada directo distinto al que te unas.</small>
-              <span className="store-badge">{joinedLiveCount} completados</span>
-            </div>
-            <div className="xp-action-item">
-              <strong>Comprar merchandising</strong>
-              <small>+80 XP por cada compra de merch confirmada.</small>
-              <span className="store-badge">{merchPurchaseCount} compras</span>
-            </div>
-            <div className="xp-action-item">
-              <strong>Comprar billetes para conciertos</strong>
-              <small>+120 XP por cada entrada presencial comprada.</small>
-              <span className="store-badge">{concertTicketCount} entradas</span>
-            </div>
+            {xpActions.map((action) => (
+              <div className="xp-action-item" key={action.code}>
+                <strong>{action.label}</strong>
+                <small>+{action.xpValue} XP</small>
+                <span className="store-badge">
+                  {action.code === 'join_live' ? `${joinedLiveCount} completados` : null}
+                  {action.code === 'buy_merch' ? `${merchPurchaseCount} compras` : null}
+                  {action.code === 'buy_ticket' ? `${concertTicketCount} entradas` : null}
+                  {action.code === 'watch_full_live' ? `${attendanceCount} directos completos` : null}
+                </span>
+              </div>
+            ))}
           </div>
         </article>
+
+        {dynamicRewards.length ? (
+          <article className="metric-card">
+            <p>Recompensas activas</p>
+            <div className="xp-action-list">
+              {dynamicRewards.map((reward) => (
+                <div className="xp-action-item" key={reward.id}>
+                  <strong>{reward.title}</strong>
+                  <small>{reward.description}</small>
+                  <span className="store-badge">Bonus XP: +{reward.xpBonus}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+        ) : null}
 
         <article className="metric-card">
           <p>Recompensa por directo completo</p>

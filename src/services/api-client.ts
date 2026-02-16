@@ -1,4 +1,11 @@
-import type { BillingProfile, StripeInvoiceSummary } from '../lib/types';
+import type {
+  BillingProfile,
+  ConcertTicket,
+  Product,
+  RewardsConfig,
+  Stream,
+  StripeInvoiceSummary
+} from '../lib/types';
 
 export type ApiResult<T> = {
   ok: boolean;
@@ -52,10 +59,13 @@ type AuthSessionResponse = {
     authProvider?: 'google' | 'email';
     name?: string;
     picture?: string;
+    canAccessDashboard?: boolean;
     isRegistered?: boolean;
     onboardingCompleted?: boolean;
   };
 };
+
+type DashboardCatalogResponse<T> = { items: T[] };
 
 async function authorizedFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = localStorage.getItem(AUTH_TOKEN_KEY);
@@ -272,6 +282,58 @@ export async function fetchStripeInvoice(input: {
     const data = await response.json();
     if (!response.ok) {
       return { ok: false, error: data?.error || 'No se pudo obtener la factura Stripe.' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function fetchStoreItems(): Promise<ApiResult<Product[]>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/catalog/store-items`);
+    const data = (await response.json()) as DashboardCatalogResponse<Product> & { error?: string };
+    if (!response.ok) {
+      return { ok: false, error: data.error || 'No se pudo cargar tienda.' };
+    }
+    return { ok: true, data: data.items || [] };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function fetchConcerts(): Promise<ApiResult<ConcertTicket[]>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/catalog/concerts`);
+    const data = (await response.json()) as DashboardCatalogResponse<ConcertTicket> & { error?: string };
+    if (!response.ok) {
+      return { ok: false, error: data.error || 'No se pudieron cargar conciertos.' };
+    }
+    return { ok: true, data: data.items || [] };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function fetchLives(): Promise<ApiResult<Stream[]>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/catalog/lives`);
+    const data = (await response.json()) as DashboardCatalogResponse<Stream> & { error?: string };
+    if (!response.ok) {
+      return { ok: false, error: data.error || 'No se pudieron cargar directos.' };
+    }
+    return { ok: true, data: data.items || [] };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function fetchRewardsConfig(): Promise<ApiResult<RewardsConfig>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/catalog/rewards-config`);
+    const data = (await response.json()) as RewardsConfig & { error?: string };
+    if (!response.ok) {
+      return { ok: false, error: data.error || 'No se pudo cargar configuración de recompensas.' };
     }
     return { ok: true, data };
   } catch {

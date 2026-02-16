@@ -120,6 +120,11 @@ function normalizeRole(role: string | undefined): 'fan' | 'artist' {
   return role === 'artist' ? 'artist' : 'fan';
 }
 
+function resolveRoleForGoogleEmail(email: string): 'fan' | 'artist' {
+  const normalized = email.trim().toLowerCase();
+  return env.bandAllowedEmails.includes(normalized) ? 'artist' : 'fan';
+}
+
 authRoutes.post('/login', (req, res) => {
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -194,9 +199,10 @@ authRoutes.post('/google', async (req, res) => {
       return;
     }
 
+    const role = resolveRoleForGoogleEmail(payload.email);
     const { user, isNewUser } = getOrCreateRegisteredUser({
       email: payload.email,
-      role: 'fan',
+      role,
       authProvider: 'google'
     });
 
@@ -204,7 +210,7 @@ authRoutes.post('/google', async (req, res) => {
       {
         sub: payload.sub || payload.email,
         email: payload.email,
-        role: 'fan',
+        role,
         authProvider: 'google',
         name: payload.name,
         picture: payload.picture
@@ -217,10 +223,11 @@ authRoutes.post('/google', async (req, res) => {
       token,
       user: {
         email: payload.email,
-        role: 'fan',
+        role,
         authProvider: 'google',
         name: payload.name,
         picture: payload.picture,
+        canAccessDashboard: role === 'artist',
         isNewUserHint: isNewUser,
         onboardingCompleted: user.onboardingCompleted
       }
@@ -240,6 +247,7 @@ authRoutes.get('/session', requireAuth, (req, res) => {
       authProvider: req.authUser?.authProvider || 'email',
       name: req.authUser?.name || '',
       picture: req.authUser?.picture || '',
+      canAccessDashboard: req.authUser?.role === 'artist',
       isRegistered: Boolean(existing),
       onboardingCompleted: existing?.onboardingCompleted ?? false
     }

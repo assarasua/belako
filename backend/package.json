@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/client": "^6.3.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
@@ -23,6 +27,7 @@
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^22.7.4",
     "@types/ws": "^8.5.12",
+    "prisma": "^6.3.1",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2"
   }

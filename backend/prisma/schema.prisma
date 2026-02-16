@@ -210,3 +210,76 @@ model AnalyticsEvent {
   payload   Json?
   createdAt DateTime @default(now())
 }
+
+model JourneyTierConfig {
+  id         String   @id @default(cuid())
+  code       String   @unique
+  title      String
+  requiredXp Int
+  perkLabel  String
+  sortOrder  Int
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model XpActionConfig {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  label     String
+  xpValue   Int
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BandReward {
+  id             String   @id @default(cuid())
+  title          String
+  description    String
+  triggerType    String
+  xpBonus        Int      @default(0)
+  active         Boolean  @default(true)
+  createdByEmail String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model BandStoreItem {
+  id        String   @id @default(cuid())
+  name      String
+  fiatPrice Decimal  @db.Decimal(10, 2)
+  imageUrl  String
+  limited   Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BandConcert {
+  id        String   @id @default(cuid())
+  title     String
+  venue     String
+  city      String
+  startsAt  DateTime
+  priceEur  Decimal  @db.Decimal(10, 2)
+  ticketUrl String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BandLive {
+  id         String   @id @default(cuid())
+  artist     String
+  title      String
+  startsAt   DateTime
+  viewers    Int      @default(0)
+  rewardHint String
+  genre      String
+  colorClass String   @default("stream-a")
+  youtubeUrl String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

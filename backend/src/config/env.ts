@@ -25,5 +25,13 @@ export const env = {
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
-  googleClientId: process.env.GOOGLE_CLIENT_ID || ''
+  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  bandAllowedEmails: (process.env.BAND_ALLOWED_EMAILS || '')
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean),
+  corsAllowedOrigins: (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
 };
