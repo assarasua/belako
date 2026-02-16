@@ -4,6 +4,8 @@ import { requireAuth } from '../middleware/auth.js';
 import {
   createSetupIntent,
   createStripeCheckoutSession,
+  getStripeInvoiceByPaymentIntentId,
+  getStripeInvoiceBySessionId,
   getOrCreateCustomerByEmail,
   listSavedPaymentMethods,
   removeSavedPaymentMethod,
@@ -28,6 +30,15 @@ const setupIntentSchema = z.object({
 const defaultMethodSchema = z.object({
   paymentMethodId: z.string().min(1)
 });
+
+const invoiceQuerySchema = z
+  .object({
+    sessionId: z.string().min(1).optional(),
+    paymentIntentId: z.string().min(1).optional()
+  })
+  .refine((value) => Boolean(value.sessionId || value.paymentIntentId), {
+    message: 'sessionId or paymentIntentId is required'
+  });
 
 export const commerceRoutes = Router();
 
@@ -94,6 +105,30 @@ commerceRoutes.delete('/payment-methods/:paymentMethodId', requireAuth, async (r
     res.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Delete payment method error';
+    res.status(500).json({ error: message });
+  }
+});
+
+commerceRoutes.get('/invoice', requireAuth, async (req, res) => {
+  const parsed = invoiceQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid query. Use sessionId or paymentIntentId.' });
+    return;
+  }
+
+  try {
+    const ownerEmail = req.authUser!.sub;
+    const { sessionId, paymentIntentId } = parsed.data;
+    const invoice = sessionId
+      ? await getStripeInvoiceBySessionId(ownerEmail, sessionId)
+      : await getStripeInvoiceByPaymentIntentId(ownerEmail, paymentIntentId!);
+    res.json(invoice);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invoice lookup error';
+    if (message === 'FORBIDDEN_INVOICE_ACCESS') {
+      res.status(403).json({ error: 'No autorizado para ver esta factura.' });
+      return;
+    }
     res.status(500).json({ error: message });
   }
 });

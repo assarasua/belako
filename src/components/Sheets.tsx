@@ -8,7 +8,7 @@ type StripeCardElement = {
 };
 
 type StripeElements = {
-  create: (type: 'card', options?: Record<string, string>) => StripeCardElement;
+  create: (type: 'card', options?: Record<string, unknown>) => StripeCardElement;
 };
 
 type StripeConfirmResult = {
@@ -39,7 +39,7 @@ type StripeInstance = {
 
 declare global {
   interface Window {
-    Stripe?: (publishableKey: string) => StripeInstance;
+    Stripe?: (publishableKey: string) => StripeInstance | null;
   }
 }
 
@@ -77,11 +77,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
     updateCheckoutField,
     checkoutError,
     checkoutProcessing,
-    checkoutUseCoinDiscount,
     checkoutMode,
-    toggleCoinDiscount,
-    canUseCoinDiscount,
-    coinPolicy,
     billingProfile,
     billingLoading,
     billingError,
@@ -131,16 +127,48 @@ export function Sheets({ model }: { model: FidelityModel }) {
           return;
         }
 
-        const stripe = window.Stripe(stripePublishableKey);
+        const normalizedKey = stripePublishableKey.trim();
+        if (!/^pk_(test|live)_/.test(normalizedKey)) {
+          throw new Error('La clave pública de Stripe no es válida.');
+        }
+
+        const isSecureOrigin =
+          window.location.protocol === 'https:' ||
+          window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1';
+        if (!isSecureOrigin) {
+          throw new Error(`Stripe requiere HTTPS en este origen: ${window.location.origin}`);
+        }
+
+        const stripe = window.Stripe(normalizedKey);
+        if (!stripe) {
+          throw new Error('Stripe no devolvió una instancia válida.');
+        }
         stripeInstanceRef.current = stripe;
         const elements = stripe.elements();
         const card = elements.create('card', {
-          hidePostalCode: 'true'
+          hidePostalCode: true,
+          style: {
+            base: {
+              color: '#ff9bd3',
+              fontFamily: '"Space Grotesk", system-ui, -apple-system, Segoe UI, sans-serif',
+              fontSize: '16px',
+              lineHeight: '24px',
+              '::placeholder': {
+                color: '#e7bfd8'
+              }
+            },
+            invalid: {
+              color: '#ff7fb0',
+              iconColor: '#ff7fb0'
+            }
+          }
         });
         cardElementRef.current = card;
         card.mount(cardContainerRef.current);
-      } catch {
-        setCardSetupError('No se pudo inicializar Stripe en este momento.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo inicializar Stripe en este momento.';
+        setCardSetupError(message);
       }
     }
 
@@ -159,11 +187,14 @@ export function Sheets({ model }: { model: FidelityModel }) {
 
   const serviceFee = Number((selectedProduct.fiatPrice * 0.05).toFixed(2));
   const shipping = selectedProduct.fiatPrice >= 40 ? 0 : 4.9;
-  const discount = checkoutUseCoinDiscount ? coinPolicy.discountValueEur : 0;
-  const total = Number((selectedProduct.fiatPrice + serviceFee + shipping - discount).toFixed(2));
+  const total = Number((selectedProduct.fiatPrice + serviceFee + shipping).toFixed(2));
   const isEurOnly = selectedProduct.purchaseType === 'eur_only';
   const checkoutIsCoin = checkoutMode === 'coin' && !isEurOnly;
   const canRedeemWithCoins = checkoutIsCoin && selectedProduct.belakoCoinCost != null && model.belakoCoins >= selectedProduct.belakoCoinCost;
+  const canSubmitCardSetup =
+    Boolean(cardSetupClientSecret) &&
+    checkoutForm.fullName.trim().length >= 3 &&
+    checkoutForm.email.includes('@');
 
   const fieldError = {
     fullName: checkoutForm.fullName.trim().length > 0 && checkoutForm.fullName.trim().length < 3,
@@ -178,19 +209,39 @@ export function Sheets({ model }: { model: FidelityModel }) {
   if (sheet === 'cardSetup') {
     return (
       <section className="sheet checkout-sheet" role="dialog" aria-label="Añadir tarjeta">
-        <h3>Añadir tarjeta</h3>
-        <p>Guarda una tarjeta para pagar más rápido en próximos checkouts.</p>
+        <header className="card-setup-header">
+          <span className="store-badge">Stripe Secure</span>
+          <h3>Añadir tarjeta</h3>
+          <p>Guarda tu tarjeta para checkout en un toque en próximas compras.</p>
+        </header>
 
         {cardSetupLoading ? <p className="hint">Preparando formulario seguro...</p> : null}
         {cardSetupError ? <p className="error-text" role="alert">{cardSetupError}</p> : null}
 
-        <div className="card-mount" ref={cardContainerRef} />
+        <article className="summary-box card-setup-billing">
+          <p>Datos de facturación</p>
+          <small><strong>Nombre:</strong> {checkoutForm.fullName || 'Pendiente de completar'}</small>
+          <small><strong>Email:</strong> {checkoutForm.email || 'Pendiente de completar'}</small>
+        </article>
+
+        <section className="card-mount-shell">
+          <p className="card-mount-title">Datos de tarjeta</p>
+          <div className="card-mount" ref={cardContainerRef} />
+          <small className="card-setup-footnote">
+            Tus datos viajan cifrados y se guardan en Stripe. Belako SuperFan App no almacena PAN ni CVC.
+          </small>
+        </section>
 
         <div className="checkout-actions">
           <button
             className="primary"
-            disabled={setupProcessing || cardSetupLoading || !cardSetupClientSecret}
+            disabled={setupProcessing || cardSetupLoading || !canSubmitCardSetup}
             onClick={async () => {
+              if (!checkoutForm.fullName.trim() || !checkoutForm.email.includes('@')) {
+                setCardSetupError('Completa nombre y email válidos antes de guardar la tarjeta.');
+                return;
+              }
+
               if (!stripeInstanceRef.current || !cardElementRef.current || !cardSetupClientSecret) {
                 setCardSetupError('Stripe no está listo todavía.');
                 return;
@@ -228,7 +279,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
             {setupProcessing ? 'Guardando tarjeta...' : 'Guardar tarjeta'}
           </button>
 
-          <button className="ghost" onClick={closeCardSetup}>Volver al checkout</button>
+          <button className="ghost" onClick={closeCardSetup}>Cancelar</button>
         </div>
       </section>
     );
@@ -341,19 +392,11 @@ export function Sheets({ model }: { model: FidelityModel }) {
             <p>Precio base: €{selectedProduct.fiatPrice.toFixed(2)}</p>
             <p>Fee plataforma (5%): €{serviceFee.toFixed(2)}</p>
             <p>Envio: {shipping === 0 ? 'Gratis' : `€${shipping.toFixed(2)}`}</p>
-            <p>Descuento BEL: -€{discount.toFixed(2)}</p>
             <p><strong>Total tarjeta: €{total.toFixed(2)}</strong></p>
           </div>
         )}
 
-        {!checkoutIsCoin ? (
-          <>
-            <button className={checkoutUseCoinDiscount ? 'primary' : 'ghost'} onClick={toggleCoinDiscount}>
-              {checkoutUseCoinDiscount ? 'Descuento BEL aplicado' : `Aplicar -€${coinPolicy.discountValueEur} (${coinPolicy.discountCost} BEL)`}
-            </button>
-            {!canUseCoinDiscount && !checkoutUseCoinDiscount ? <p className="hint">No tienes BEL suficiente para descuento.</p> : null}
-          </>
-        ) : !canRedeemWithCoins ? (
+        {checkoutIsCoin && !canRedeemWithCoins ? (
           <p className="error-text">No tienes BEL suficiente para este canje.</p>
         ) : null}
 

@@ -1,4 +1,4 @@
-import type { BillingProfile } from '../lib/types';
+import type { BillingProfile, StripeInvoiceSummary } from '../lib/types';
 
 export type ApiResult<T> = {
   ok: boolean;
@@ -9,6 +9,7 @@ export type ApiResult<T> = {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 const AUTH_TOKEN_KEY = 'belako_fan_token';
 const AUTH_EMAIL_KEY = 'belako_fan_email';
+const PROFILE_STORAGE_KEY = 'belako_profile_settings_v1';
 
 type StripeCheckoutPayload = {
   productId: string;
@@ -37,15 +38,23 @@ type AuthLoginResponse = {
   user: { email: string; role: 'fan' | 'artist' };
 };
 
-async function getOrCreateAuthToken(): Promise<string | null> {
-  const existing = localStorage.getItem(AUTH_TOKEN_KEY);
-  if (existing) {
-    return existing;
+function getPreferredAuthEmail(): string | null {
+  try {
+    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as { email?: string };
+    if (!parsed.email || !parsed.email.includes('@')) {
+      return null;
+    }
+    return parsed.email.trim().toLowerCase();
+  } catch {
+    return null;
   }
+}
 
-  const existingEmail = localStorage.getItem(AUTH_EMAIL_KEY);
-  const email = existingEmail || `fan-${Math.random().toString(36).slice(2, 10)}@belako.app`;
-
+async function loginWithEmail(email: string): Promise<string | null> {
   try {
     const response = await fetch(`${API_BASE_URL}/auth/login`, {
       method: 'POST',
@@ -62,6 +71,28 @@ async function getOrCreateAuthToken(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function getOrCreateAuthToken(): Promise<string | null> {
+  const existing = localStorage.getItem(AUTH_TOKEN_KEY);
+  const preferredEmail = getPreferredAuthEmail();
+  const existingEmail = localStorage.getItem(AUTH_EMAIL_KEY);
+  const normalizedExisting = existingEmail ? existingEmail.trim().toLowerCase() : '';
+
+  // Keep auth identity aligned with profile email so Stripe customer mapping is stable.
+  if (existing && preferredEmail && preferredEmail !== normalizedExisting) {
+    const refreshed = await loginWithEmail(preferredEmail);
+    if (refreshed) {
+      return refreshed;
+    }
+  }
+
+  if (existing) {
+    return existing;
+  }
+
+  const email = preferredEmail || existingEmail || `fan-${Math.random().toString(36).slice(2, 10)}@belako.app`;
+  return loginWithEmail(email);
 }
 
 async function authorizedFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -178,6 +209,34 @@ export async function removePaymentMethod(paymentMethodId: string): Promise<ApiR
     const data = await response.json();
     if (!response.ok) {
       return { ok: false, error: data?.error || 'No se pudo eliminar la tarjeta.' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function fetchStripeInvoice(input: {
+  sessionId?: string;
+  paymentIntentId?: string;
+}): Promise<ApiResult<StripeInvoiceSummary>> {
+  const query = new URLSearchParams();
+  if (input.sessionId) {
+    query.set('sessionId', input.sessionId);
+  }
+  if (input.paymentIntentId) {
+    query.set('paymentIntentId', input.paymentIntentId);
+  }
+
+  if (!query.toString()) {
+    return { ok: false, error: 'Falta identificador de pago para recuperar la factura.' };
+  }
+
+  try {
+    const response = await authorizedFetch(`/commerce/invoice?${query.toString()}`);
+    const data = await response.json();
+    if (!response.ok) {
+      return { ok: false, error: data?.error || 'No se pudo obtener la factura Stripe.' };
     }
     return { ok: true, data };
   } catch {

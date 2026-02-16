@@ -46,23 +46,20 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     setFanTab,
     track,
     liveState,
-    watchMinute,
     watchFullLive,
     claimFullLiveReward,
     currentStreamFullyWatched,
     fullLiveRewardUnlocked,
     fullLiveRewardClaimed,
     openCheckout,
-    toggleReconnectState,
-    endStream,
     nextStream,
     tiers,
     claimTierReward,
     claimedTierIds,
     conversion,
     coinPolicy,
-    canUseCoinDiscount,
     rewardHistory,
+    purchases,
     seasonPass,
     seasonTiers,
     seasonMissions,
@@ -83,6 +80,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     refreshPaymentMethods,
     setDefaultSavedMethod,
     removeSavedMethod,
+    syncPurchaseInvoice,
     logoutSession
   } = model;
   const [storeSort, setStoreSort] = useState<StorePriceSort>('price_asc');
@@ -98,8 +96,8 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const [passwordError, setPasswordError] = useState('');
   const purchaseEntries = useMemo(
-    () => rewardHistory.filter((entry) => entry.type === 'purchase').slice(0, 6),
-    [rewardHistory]
+    () => purchases.slice(0, 10),
+    [purchases]
   );
 
   const homeSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -128,6 +126,17 @@ export function FanScreens({ model }: { model: FidelityModel }) {
       };
     });
   }, [homeFeedCount]);
+
+  const nextScheduledStream = useMemo(() => {
+    if (streams.length === 0) {
+      return null;
+    }
+    const currentIndex = streams.findIndex((item) => item.id === activeStream.id);
+    if (currentIndex < 0) {
+      return streams[0];
+    }
+    return streams[(currentIndex + 1) % streams.length];
+  }, [activeStream.id]);
 
   useEffect(() => {
     if (fanTab !== 'home' || streams.length === 0) {
@@ -174,24 +183,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     setAddressError('');
   }
 
-  async function shareProfile() {
-    const profileUrl = `${window.location.origin}${window.location.pathname}#@${profileSummary.username}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: 'Belako Superfan',
-          text: `Perfil fan de @${profileSummary.username}`,
-          url: profileUrl
-        });
-      } else {
-        await navigator.clipboard.writeText(profileUrl);
-      }
-      track('EVT_profile_shared', 'Perfil compartido');
-    } catch {
-      // user cancelled share flow
-    }
-  }
-
   if (fanTab === 'home') {
     return (
       <section className="stack">
@@ -200,14 +191,18 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           <h2>Hoy en directo</h2>
           <h3>{activeStream.title}</h3>
           <p>{activeStream.rewardHint}</p>
+          {nextScheduledStream ? (
+            <small>Siguiente directo: {nextScheduledStream.title} · {nextScheduledStream.nextLiveAt}</small>
+          ) : null}
           <button
             onClick={() => {
               setFanTab('live');
               track('EVT_stream_join', `Entró al directo de ${activeStream.artist}`);
             }}
           >
-            Entrar ahora
+            Ver directo ahora
           </button>
+          <small>Acceso directo al live, sin registro adicional.</small>
         </article>
 
         {streams.length === 0 ? (
@@ -249,7 +244,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         <article className="metric-card">
           <p>Resumen rapido</p>
           <small>BEL {belakoCoins} | Asistencia {attendanceCount} directos | Gasto €{spend.toFixed(2)}</small>
-          <small>Canje activo: -€{coinPolicy.discountValueEur} por {coinPolicy.discountCost} BEL</small>
+          <small>Compra segura en euros con Stripe.</small>
         </article>
       </section>
     );
@@ -270,6 +265,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           </div>
           <h2>{activeStream.artist}</h2>
           <p>{activeStream.title}</p>
+          {nextScheduledStream ? <small>Siguiente directo: {nextScheduledStream.title} · {nextScheduledStream.nextLiveAt}</small> : null}
 
           <div className="chat-box" aria-live="polite">
             <p>@ane: este drop es una locura</p>
@@ -278,9 +274,8 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           </div>
 
           <div className="row">
-            <button onClick={watchMinute}>Ver 1 min (+{coinPolicy.watchReward} BEL)</button>
             <button className={currentStreamFullyWatched ? 'ghost' : 'primary'} onClick={watchFullLive}>
-              {currentStreamFullyWatched ? 'Directo completo verificado' : 'Ver directo entero'}
+              {currentStreamFullyWatched ? 'Directo completo verificado' : `Ver directo entero (+${coinPolicy.watchReward} BEL)`}
             </button>
           </div>
           <small>{currentStreamFullyWatched ? 'Recompensa de directo completo desbloqueada.' : 'Ver directo entero para desbloquear recompensa.'}</small>
@@ -296,13 +291,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           </section>
           <div className="row sticky-live-actions">
             <button onClick={() => openCheckout(products[0])}>Comprar merch</button>
-            <button className="ghost" onClick={toggleReconnectState}>
-              {liveState === 'live' ? 'Simular reconexion' : 'Volver al directo'}
-            </button>
           </div>
-          <button className="ghost" onClick={endStream}>
-            Finalizar estado directo
-          </button>
         </article>
 
         {liveState === 'ended' ? (
@@ -476,9 +465,9 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         <article className="metric-card">
           <p>Belako Coin</p>
           <small>Saldo actual: {belakoCoins} BEL</small>
-          <small>Hitos: ver directo (+{coinPolicy.watchReward} BEL) | compra merch (+{coinPolicy.purchaseReward} BEL)</small>
+          <small>Hitos: ver directo entero (+{coinPolicy.watchReward} BEL) | compra merch (+{coinPolicy.purchaseReward} BEL)</small>
           <small>Límite diario por visualización: {coinPolicy.dailyWatchCoinCap} BEL</small>
-          <small>{canUseCoinDiscount ? 'Puedes usar descuento en checkout.' : 'Consigue más BEL para activar descuento.'}</small>
+          <small>BEL se usa para progreso fan y recompensas.</small>
         </article>
 
         <article className="metric-card">
@@ -512,8 +501,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           <small>{profileSettings.location} · {profileSettings.website}</small>
         </div>
         <div className="profile-hero-actions">
-          <button className="ghost" onClick={() => setProfileEditing((prev) => !prev)}>{profileEditing ? 'Cerrar edición' : 'Editar perfil'}</button>
-          <button className="ghost" onClick={shareProfile}>Compartir perfil</button>
+          <button className="ghost" onClick={() => setProfileEditing((prev) => prev)}>Editar perfil</button>
         </div>
       </article>
 
@@ -550,9 +538,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
 
       <article className="metric-card profile-card">
         <p className="profile-section-title">Configuración de cuenta</p>
-        <div className="row actions-row">
-          <span className="store-badge">{profileSettings.theme.toUpperCase()}</span>
-        </div>
 
         {profileEditing ? (
           <div className="profile-form-grid">
@@ -584,12 +569,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
               <select value={profileSettings.language} onChange={(e) => updateProfileField('language', e.target.value as 'es' | 'en')}>
                 <option value="es">Español</option>
                 <option value="en">English</option>
-              </select>
-            </label>
-            <label>Tema
-              <select value={profileSettings.theme} onChange={(e) => updateProfileField('theme', e.target.value as 'dark' | 'light')}>
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
               </select>
             </label>
 
@@ -779,11 +758,36 @@ export function FanScreens({ model }: { model: FidelityModel }) {
                 </button>
                 {openInvoiceId === purchase.id ? (
                   <div className="invoice-box">
-                    <small><strong>Factura:</strong> INV-{purchase.id.slice(-6).toUpperCase()}</small>
-                    <small><strong>Cliente:</strong> {profileSummary.displayName}</small>
+                    <small><strong>Factura:</strong> {purchase.stripePaymentIntentId || `INV-${purchase.id.slice(-6).toUpperCase()}`}</small>
+                    <small><strong>Cliente:</strong> {purchase.customerName || profileSummary.displayName}</small>
+                    <small><strong>Email:</strong> {purchase.customerEmail || profileSettings.email}</small>
                     <small><strong>Concepto:</strong> {purchase.label}</small>
                     <small><strong>Fecha:</strong> {purchase.at}</small>
-                    <small><strong>Estado:</strong> Pagada</small>
+                    <small><strong>Importe:</strong> €{purchase.amountEur.toFixed(2)}</small>
+                    <small><strong>Estado:</strong> {purchase.status === 'paid' ? 'Pagada' : purchase.status}</small>
+
+                    {purchase.stripeReceiptUrl ? (
+                      <a className="ghost ghost-link" href={purchase.stripeReceiptUrl} target="_blank" rel="noreferrer">
+                        Ver recibo Stripe
+                      </a>
+                    ) : null}
+                    {purchase.stripeInvoicePdfUrl ? (
+                      <a className="ghost ghost-link" href={purchase.stripeInvoicePdfUrl} target="_blank" rel="noreferrer">
+                        Descargar factura Stripe (PDF)
+                      </a>
+                    ) : null}
+                    {purchase.stripeHostedInvoiceUrl ? (
+                      <a className="ghost ghost-link" href={purchase.stripeHostedInvoiceUrl} target="_blank" rel="noreferrer">
+                        Ver factura alojada
+                      </a>
+                    ) : null}
+
+                    {!purchase.stripeReceiptUrl && !purchase.stripeInvoicePdfUrl && (purchase.stripeSessionId || purchase.stripePaymentIntentId) ? (
+                      <button className="ghost" onClick={() => syncPurchaseInvoice(purchase.id)}>
+                        Sincronizar factura real de Stripe
+                      </button>
+                    ) : null}
+                    {purchase.invoiceError ? <small className="error-text">{purchase.invoiceError}</small> : null}
                   </div>
                 ) : null}
               </article>

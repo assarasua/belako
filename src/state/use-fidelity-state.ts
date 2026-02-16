@@ -9,6 +9,7 @@ import type {
   LiveState,
   NotificationItem,
   NotificationPreferenceKey,
+  PurchaseRecord,
   ProfileSettings,
   Product,
   RewardHistoryItem,
@@ -22,6 +23,7 @@ import {
   createSetupIntent,
   createStripeCheckoutSession,
   fetchPaymentMethods,
+  fetchStripeInvoice,
   fetchStripeConfig,
   removePaymentMethod,
   setDefaultPaymentMethod
@@ -48,6 +50,7 @@ const AUTH_EMAIL_KEY = 'belako_fan_email';
 const PROFILE_STORAGE_KEY = 'belako_profile_settings_v1';
 const ADDRESS_STORAGE_KEY = 'belako_addresses_v1';
 const REWARD_HISTORY_STORAGE_KEY = 'belako_reward_history_v1';
+const PURCHASES_STORAGE_KEY = 'belako_purchases_v1';
 
 const defaultCheckoutForm: CheckoutForm = {
   fullName: '',
@@ -60,7 +63,6 @@ const defaultCheckoutForm: CheckoutForm = {
 };
 
 const xpPolicy = {
-  watchMinute: 10,
   fullLive: 50,
   purchase: 80,
   tierClaim: 40,
@@ -111,6 +113,18 @@ const defaultRewardHistory: RewardHistoryItem[] = [
     label: 'Compra Belako LP Vinilo 12" Transparente Ed. limitada "Sigo regando" (€26.95)',
     at: nowLabel(),
     type: 'purchase'
+  }
+];
+
+const defaultPurchases: PurchaseRecord[] = [
+  {
+    id: 'p-initial-vinyl',
+    label: 'Belako LP Vinilo 12" Transparente Ed. limitada "Sigo regando"',
+    at: nowLabel(),
+    amountEur: 26.95,
+    status: 'paid',
+    customerName: 'Asier Sarasua',
+    customerEmail: 'assarasua@gmail.com'
   }
 ];
 
@@ -166,8 +180,24 @@ function safeReadRewardHistory(): RewardHistoryItem[] {
   }
 }
 
+function safeReadPurchases(): PurchaseRecord[] {
+  try {
+    const raw = localStorage.getItem(PURCHASES_STORAGE_KEY);
+    if (!raw) {
+      return defaultPurchases;
+    }
+    const parsed = JSON.parse(raw) as PurchaseRecord[];
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return defaultPurchases;
+    }
+    return parsed;
+  } catch {
+    return defaultPurchases;
+  }
+}
+
 export function useFidelityState() {
-  const [fanTab, setFanTab] = useState<FanTab>('home');
+  const [fanTab, setFanTabState] = useState<FanTab>('home');
 
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingDone, setOnboardingDone] = useState(false);
@@ -188,7 +218,6 @@ export function useFidelityState() {
   const [checkoutForm, setCheckoutForm] = useState<CheckoutForm>(defaultCheckoutForm);
   const [checkoutError, setCheckoutError] = useState('');
   const [checkoutProcessing, setCheckoutProcessing] = useState(false);
-  const [checkoutUseCoinDiscount, setCheckoutUseCoinDiscount] = useState(false);
   const [checkoutMode, setCheckoutMode] = useState<CheckoutMode>('fiat');
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState('');
   const [saveForFuture, setSaveForFuture] = useState(true);
@@ -208,6 +237,7 @@ export function useFidelityState() {
   const notificationTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const [rewardHistory, setRewardHistory] = useState<RewardHistoryItem[]>(defaultRewardHistory);
+  const [purchases, setPurchases] = useState<PurchaseRecord[]>(defaultPurchases);
 
   const [profileSettings, setProfileSettings] = useState<ProfileSettings>(defaultProfileSettings);
   const [addresses, setAddresses] = useState<Address[]>(defaultAddresses);
@@ -224,7 +254,6 @@ export function useFidelityState() {
   const [seasonXp, setSeasonXp] = useState(35);
   const [lastActivityDay, setLastActivityDay] = useState(new Date().toISOString());
   const [streakDays, setStreakDays] = useState(1);
-  const [watchMinuteCount, setWatchMinuteCount] = useState(0);
   const [fullWatchCount, setFullWatchCount] = useState(0);
   const [purchaseCount, setPurchaseCount] = useState(1);
   const [tierClaimCount, setTierClaimCount] = useState(0);
@@ -237,8 +266,6 @@ export function useFidelityState() {
     watchReward: 5,
     purchaseReward: 20,
     claimReward: 30,
-    discountCost: 50,
-    discountValueEur: 5,
     dailyWatchCoinCap: 50
   };
 
@@ -289,6 +316,7 @@ export function useFidelityState() {
     setProfileSettings(safeReadProfileSettings());
     setAddresses(safeReadAddresses());
     setRewardHistory(safeReadRewardHistory());
+    setPurchases(safeReadPurchases());
     const savedEmail = localStorage.getItem(AUTH_EMAIL_KEY) || '';
     if (savedEmail) {
       setProfileSettings((prev) => ({ ...prev, email: prev.email || savedEmail }));
@@ -299,6 +327,9 @@ export function useFidelityState() {
   useEffect(() => {
     try {
       localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profileSettings));
+      if (profileSettings.email && profileSettings.email.includes('@')) {
+        localStorage.setItem(AUTH_EMAIL_KEY, profileSettings.email.trim().toLowerCase());
+      }
     } catch {
       // localStorage may be blocked
     }
@@ -319,6 +350,14 @@ export function useFidelityState() {
       // localStorage may be blocked
     }
   }, [rewardHistory]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PURCHASES_STORAGE_KEY, JSON.stringify(purchases));
+    } catch {
+      // localStorage may be blocked
+    }
+  }, [purchases]);
 
   useEffect(() => {
     if (!checkoutForm.email && profileSettings.email) {
@@ -472,19 +511,11 @@ export function useFidelityState() {
   const seasonMissions: SeasonMission[] = useMemo(() => {
     const definitions = [
       {
-        id: 'm-watch-minute',
-        title: 'Asistencia exprés',
-        description: 'Ver 1 min en 3 directos esta semana',
-        progress: watchMinuteCount,
-        goal: 3,
-        xpReward: 30
-      },
-      {
         id: 'm-full-live',
         title: 'Directo completo',
-        description: 'Ver 1 directo entero',
+        description: 'Ver 3 directos enteros',
         progress: fullWatchCount,
-        goal: 1,
+        goal: 3,
         xpReward: 50
       },
       {
@@ -513,9 +544,8 @@ export function useFidelityState() {
         status: claimed ? 'claimed' : completed ? 'completed' : 'active'
       };
     });
-  }, [claimedMissionIds, fullWatchCount, purchaseCount, tierClaimCount, watchMinuteCount]);
+  }, [claimedMissionIds, fullWatchCount, purchaseCount, tierClaimCount]);
 
-  const canUseCoinDiscount = belakoCoins >= coinPolicy.discountCost;
   const currentStreamFullyWatched = fullyWatchedStreamIds.includes(activeStream.id);
   const fullLiveRewardUnlocked = fullyWatchedStreamIds.length > 0;
 
@@ -542,16 +572,9 @@ export function useFidelityState() {
     setOnboardingStep(next);
   }
 
-  function watchMinute() {
-    registerDailyActivity();
-    setWatchMinuteCount((prev) => prev + 1);
-    setAttendanceCount((n) => n + 1);
-    setBelakoCoins((n) => n + coinPolicy.watchReward);
-    addXp(xpPolicy.watchMinute, 'Asistencia de 1 minuto');
-    setStatusText(`Asistencia verificada. +${coinPolicy.watchReward} BEL.`);
-    track('EVT_belako_coin_earned', 'Belako Coin ganado por ver directo');
-    notify('Belako Coin', `Has ganado +${coinPolicy.watchReward} BEL por ver el directo.`);
-    pushHistory({ label: `+${coinPolicy.watchReward} BEL por asistencia`, type: 'coin' });
+  function setFanTab(tab: FanTab) {
+    setFanTabState(tab);
+    setSheet('none');
   }
 
   function watchFullLive() {
@@ -563,10 +586,12 @@ export function useFidelityState() {
     setFullWatchCount((prev) => prev + 1);
     setFullyWatchedStreamIds((prev) => [...prev, activeStream.id]);
     setAttendanceCount((n) => n + 1);
+    setBelakoCoins((n) => n + coinPolicy.watchReward);
     addXp(xpPolicy.fullLive, 'Directo completo');
-    setStatusText('Directo completo visto. Recompensa especial desbloqueada.');
+    setStatusText(`Directo completo visto. +${coinPolicy.watchReward} BEL y recompensa especial desbloqueada.`);
     track('EVT_stream_full_watch', `Directo completo visto: ${activeStream.id}`);
-    notify('Recompensa desbloqueada', 'Ya puedes reclamar la recompensa por ver directo entero.');
+    notify('Recompensa desbloqueada', `Directo completo verificado. +${coinPolicy.watchReward} BEL y recompensa lista para reclamar.`);
+    pushHistory({ label: `+${coinPolicy.watchReward} BEL por directo completo`, type: 'coin' });
     pushHistory({ label: `Directo completo: ${activeStream.title}`, type: 'reward' });
   }
 
@@ -590,6 +615,17 @@ export function useFidelityState() {
 
   function updateProfileField<K extends keyof ProfileSettings>(field: K, value: ProfileSettings[K]) {
     setProfileSettings((prev) => ({ ...prev, [field]: value }));
+    if (field === 'email' && typeof value === 'string') {
+      const normalizedEmail = value.trim().toLowerCase();
+      if (normalizedEmail.includes('@')) {
+        try {
+          localStorage.setItem(AUTH_EMAIL_KEY, normalizedEmail);
+        } catch {
+          // localStorage may be blocked
+        }
+        setCheckoutForm((prev) => ({ ...prev, email: normalizedEmail }));
+      }
+    }
   }
 
   function toggleNotification(key: NotificationPreferenceKey) {
@@ -750,7 +786,8 @@ export function useFidelityState() {
     setCardSetupClientSecret('');
     setCardSetupError('');
     setCardSetupLoading(false);
-    setSheet('checkout');
+    setSheet('none');
+    setFanTab('profile');
   }
 
   async function onCardSetupSuccess(paymentMethodId?: string) {
@@ -760,7 +797,8 @@ export function useFidelityState() {
     if (paymentMethodId) {
       setSelectedPaymentMethodId(paymentMethodId);
     }
-    setSheet('checkout');
+    setSheet('none');
+    setFanTab('profile');
     setStatusText('Tarjeta guardada correctamente.');
   }
 
@@ -779,7 +817,6 @@ export function useFidelityState() {
     setSheet('checkout');
     setCheckoutMode(normalizedMode);
     setCheckoutError('');
-    setCheckoutUseCoinDiscount(false);
 
     if (normalizedMode === 'fiat' && billingProfile?.methods.length) {
       const defaultMethod = billingProfile.methods.find((method) => method.isDefault) || billingProfile.methods[0];
@@ -826,29 +863,122 @@ export function useFidelityState() {
     return '';
   }
 
-  function toggleCoinDiscount() {
-    if (!canUseCoinDiscount) {
-      setCheckoutError(`Necesitas ${coinPolicy.discountCost} BEL para usar descuento.`);
-      return;
+  function mergeStripeInvoiceOnPurchase(
+    purchaseId: string,
+    invoice: {
+      paymentIntentId: string;
+      chargeId?: string;
+      status: string;
+      amountEur: number;
+      currency: string;
+      createdAt: string;
+      receiptUrl?: string;
+      hostedInvoiceUrl?: string;
+      invoicePdfUrl?: string;
+      customerEmail?: string;
+      customerName?: string;
     }
-    setCheckoutUseCoinDiscount((v) => !v);
-    setCheckoutError('');
+  ) {
+    setPurchases((prev) =>
+      prev.map((purchase) =>
+        purchase.id === purchaseId
+          ? {
+              ...purchase,
+              stripePaymentIntentId: invoice.paymentIntentId || purchase.stripePaymentIntentId,
+              stripeChargeId: invoice.chargeId || purchase.stripeChargeId,
+              stripeReceiptUrl: invoice.receiptUrl || purchase.stripeReceiptUrl,
+              stripeInvoicePdfUrl: invoice.invoicePdfUrl || purchase.stripeInvoicePdfUrl,
+              stripeHostedInvoiceUrl: invoice.hostedInvoiceUrl || purchase.stripeHostedInvoiceUrl,
+              customerEmail: invoice.customerEmail || purchase.customerEmail,
+              customerName: invoice.customerName || purchase.customerName,
+              status: invoice.status === 'succeeded' ? 'paid' : purchase.status,
+              invoiceLastSyncedAt: nowLabel(),
+              invoiceError: undefined
+            }
+          : purchase
+      )
+    );
   }
 
-  function onPurchaseSuccess(productName: string, amountPaid: number, usedCoinDiscount: boolean) {
+  async function syncPurchaseInvoice(
+    purchaseId: string,
+    refs?: { sessionId?: string; paymentIntentId?: string }
+  ) {
+    const purchase = purchases.find((item) => item.id === purchaseId);
+    if (!purchase && !refs?.sessionId && !refs?.paymentIntentId) {
+      return;
+    }
+    const sessionId = refs?.sessionId || purchase?.stripeSessionId;
+    const paymentIntentId = refs?.paymentIntentId || purchase?.stripePaymentIntentId;
+
+    if (!sessionId && !paymentIntentId) {
+      setPurchases((prev) =>
+        prev.map((item) =>
+          item.id === purchaseId
+            ? { ...item, invoiceError: 'Esta compra no tiene referencia Stripe para descargar factura.' }
+            : item
+        )
+      );
+      return;
+    }
+
+    const invoiceResponse = await fetchStripeInvoice({
+      sessionId,
+      paymentIntentId
+    });
+
+    if (!invoiceResponse.ok || !invoiceResponse.data) {
+      setPurchases((prev) =>
+        prev.map((item) =>
+          item.id === purchaseId
+            ? { ...item, invoiceError: invoiceResponse.error || 'No se pudo sincronizar factura Stripe.' }
+            : item
+        )
+      );
+      return;
+    }
+
+    mergeStripeInvoiceOnPurchase(purchaseId, invoiceResponse.data);
+  }
+
+  function onPurchaseSuccess(
+    productName: string,
+    amountPaid: number,
+    stripeRef?: { sessionId?: string; paymentIntentId?: string }
+  ) {
+    const purchaseId = `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const purchaseAt = nowLabel();
+
     registerDailyActivity();
     setPurchaseCount((prev) => prev + 1);
     setSpend((n) => n + amountPaid);
-    setBelakoCoins((n) => n + coinPolicy.purchaseReward - (usedCoinDiscount ? coinPolicy.discountCost : 0));
+    setBelakoCoins((n) => n + coinPolicy.purchaseReward);
+    setPurchases((prev) => [
+      {
+        id: purchaseId,
+        label: productName,
+        at: purchaseAt,
+        amountEur: amountPaid,
+        status: 'paid',
+        customerName: checkoutForm.fullName,
+        customerEmail: checkoutForm.email,
+        stripeSessionId: stripeRef?.sessionId,
+        stripePaymentIntentId: stripeRef?.paymentIntentId
+      },
+      ...prev
+    ]);
     addXp(xpPolicy.purchase, `Compra ${productName}`);
     setSheet('none');
     setCheckoutProcessing(false);
-    setCheckoutUseCoinDiscount(false);
     setStatusText(`Pago confirmado: ${productName}. +${coinPolicy.purchaseReward} BEL.`);
     track('EVT_merch_purchase_success', `Compra en EUR completada para ${productName}`);
     notify('Compra completada', `${productName} confirmado. Revisa tu email para seguimiento.`);
     pushHistory({ label: `Compra ${productName} (€${amountPaid.toFixed(2)})`, type: 'purchase' });
     pushHistory({ label: `+${coinPolicy.purchaseReward} BEL por compra`, type: 'coin' });
+
+    if (stripeRef?.sessionId || stripeRef?.paymentIntentId) {
+      void syncPurchaseInvoice(purchaseId, stripeRef);
+    }
   }
 
   async function payWithFiat() {
@@ -875,16 +1005,10 @@ export function useFidelityState() {
       setBelakoCoins((n) => n - coinCost);
       setSheet('none');
       setCheckoutProcessing(false);
-      setCheckoutUseCoinDiscount(false);
       setStatusText(`Canje confirmado: ${selectedProduct.name}.`);
       track('EVT_reward_redeemed', `Canje en BEL completado para ${selectedProduct.name}`);
       notify('Canje completado', `${selectedProduct.name} añadido a tus pedidos.`);
       pushHistory({ label: `Canje ${selectedProduct.name} (${coinCost} BEL)`, type: 'reward' });
-      return;
-    }
-
-    if (checkoutUseCoinDiscount && !canUseCoinDiscount) {
-      setCheckoutError('Saldo BEL insuficiente para aplicar descuento.');
       return;
     }
 
@@ -893,15 +1017,14 @@ export function useFidelityState() {
 
     const serviceFee = Number((selectedProduct.fiatPrice * 0.05).toFixed(2));
     const shipping = selectedProduct.fiatPrice >= 40 ? 0 : 4.9;
-    const discount = checkoutUseCoinDiscount ? coinPolicy.discountValueEur : 0;
-    const total = Number((selectedProduct.fiatPrice + serviceFee + shipping - discount).toFixed(2));
+    const total = Number((selectedProduct.fiatPrice + serviceFee + shipping).toFixed(2));
 
     const response = await createStripeCheckoutSession({
       productId: selectedProduct.id,
       productName: selectedProduct.name,
       customerEmail: checkoutForm.email,
       totalAmountEur: total,
-      useCoinDiscount: checkoutUseCoinDiscount,
+      useCoinDiscount: false,
       paymentMethodId: selectedPaymentMethodId || undefined,
       saveForFuture
     });
@@ -914,7 +1037,9 @@ export function useFidelityState() {
     }
 
     if (response.data.mode === 'payment_intent') {
-      onPurchaseSuccess(selectedProduct.name, total, checkoutUseCoinDiscount);
+      onPurchaseSuccess(selectedProduct.name, total, {
+        paymentIntentId: response.data.paymentIntentId
+      });
       return;
     }
 
@@ -1020,9 +1145,9 @@ export function useFidelityState() {
     if (checkoutState === 'success') {
       const productName = params.get('productName') || 'Merch Belako';
       const total = Number(params.get('total'));
-      const usedCoinDiscount = params.get('coinDiscount') === '1';
       const amountPaid = Number.isFinite(total) && total > 0 ? total : selectedProduct.fiatPrice;
-      onPurchaseSuccess(productName, amountPaid, usedCoinDiscount);
+      const sessionId = params.get('session_id') || undefined;
+      onPurchaseSuccess(productName, amountPaid, { sessionId });
       window.history.replaceState({}, '', window.location.pathname);
       return;
     }
@@ -1056,13 +1181,12 @@ export function useFidelityState() {
     checkoutForm,
     checkoutError,
     checkoutProcessing,
-    checkoutUseCoinDiscount,
     checkoutMode,
-    canUseCoinDiscount,
     coinPolicy,
     events,
     notifications,
     rewardHistory,
+    purchases,
     seasonPass,
     seasonTiers,
     seasonMissions,
@@ -1088,12 +1212,10 @@ export function useFidelityState() {
     setSaveForFuture,
     setCardSetupError,
     completeOnboarding,
-    watchMinute,
     watchFullLive,
     claimFullLiveReward,
     openCheckout,
     updateCheckoutField,
-    toggleCoinDiscount,
     payWithFiat,
     claimTierReward,
     nextStream,
@@ -1115,6 +1237,7 @@ export function useFidelityState() {
     setDefaultSavedMethod,
     removeSavedMethod,
     onCardSetupSuccess,
+    syncPurchaseInvoice,
     logoutSession,
     track
   };
@@ -1127,7 +1250,7 @@ export function onboardingCopy(step: number): string {
   if (step === 1) {
     return 'Completa hitos para ganar Belako Coin y canjear descuentos.';
   }
-  return 'Mira 1 minuto de directo para ganar tu primer Belako Coin.';
+  return 'Mira un directo entero para ganar tu primer Belako Coin.';
 }
 
 export function liveBadgeText(state: LiveState): string {

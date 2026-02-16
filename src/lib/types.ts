@@ -8,6 +8,7 @@ export type Stream = {
   id: string;
   artist: string;
   title: string;
+  nextLiveAt: string;
   viewers: number;
   rewardHint: string;
   genre: string;
@@ -103,6 +104,38 @@ export type SavedPaymentMethod = {
 export type BillingProfile = {
   customerId: string;
   methods: SavedPaymentMethod[];
+};
+
+export type StripeInvoiceSummary = {
+  paymentIntentId: string;
+  chargeId?: string;
+  status: string;
+  amountEur: number;
+  currency: string;
+  createdAt: string;
+  receiptUrl?: string;
+  hostedInvoiceUrl?: string;
+  invoicePdfUrl?: string;
+  customerEmail?: string;
+  customerName?: string;
+};
+
+export type PurchaseRecord = {
+  id: string;
+  label: string;
+  at: string;
+  amountEur: number;
+  status: 'paid' | 'pending' | 'failed';
+  customerName?: string;
+  customerEmail?: string;
+  stripeSessionId?: string;
+  stripePaymentIntentId?: string;
+  stripeChargeId?: string;
+  stripeReceiptUrl?: string;
+  stripeInvoicePdfUrl?: string;
+  stripeHostedInvoiceUrl?: string;
+  invoiceLastSyncedAt?: string;
+  invoiceError?: string;
 };
 
 export type SeasonPassTier = {

@@ -316,6 +316,39 @@
   gap: var(--s-3);
 }
 
+.card-setup-header {
+  display: grid;
+  gap: 6px;
+}
+
+.card-setup-header p {
+  margin: 0;
+  color: #dce6fb;
+}
+
+.card-setup-billing p {
+  margin: 0;
+  font-weight: 700;
+  color: #ffe4f5;
+}
+
+.card-mount-shell {
+  border-radius: var(--r-sm);
+  border: 1px solid #4d6795;
+  background: linear-gradient(165deg, rgba(17, 26, 43, 0.94), rgba(14, 22, 35, 0.94));
+  padding: 0.64rem;
+  display: grid;
+  gap: 8px;
+}
+
+.card-mount-title {
+  margin: 0;
+  color: #f3dcf2;
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
 .checkout-trust {
   border-radius: var(--r-sm);
   border: 1px solid #48618a;
@@ -406,6 +439,19 @@ details p {
 
 .security-actions {
   grid-template-columns: 1fr;
+}
+
+.card-setup-footnote {
+  color: #cddaf4;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.ghost-link {
+  text-decoration: none;
+  text-align: center;
+  display: inline-grid;
+  place-items: center;
 }
 
 .history-tag {

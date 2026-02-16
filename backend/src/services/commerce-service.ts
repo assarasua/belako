@@ -32,6 +32,20 @@ export type SavedPaymentMethod = {
   isDefault: boolean;
 };
 
+export type StripeInvoiceSummary = {
+  paymentIntentId: string;
+  chargeId?: string;
+  status: string;
+  amountEur: number;
+  currency: string;
+  createdAt: string;
+  receiptUrl?: string;
+  hostedInvoiceUrl?: string;
+  invoicePdfUrl?: string;
+  customerEmail?: string;
+  customerName?: string;
+};
+
 let stripeClient: Stripe | null = null;
 const customerByEmail = new Map<string, string>();
 
@@ -53,6 +67,15 @@ function toCents(amountEur: number): number {
 
 function cleanBaseUrl(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
+}
+
+function ensureStripeOwnership(ownerEmail: string, targetEmail?: string | null) {
+  if (!targetEmail) {
+    return;
+  }
+  if (ownerEmail.trim().toLowerCase() !== targetEmail.trim().toLowerCase()) {
+    throw new Error('FORBIDDEN_INVOICE_ACCESS');
+  }
 }
 
 export async function getOrCreateCustomerByEmail(email: string): Promise<string> {
@@ -190,6 +213,9 @@ export async function createStripeCheckoutSession(input: StripeCheckoutInput): P
     mode: 'payment',
     payment_method_types: ['card'],
     customer_email: input.customerEmail,
+    invoice_creation: {
+      enabled: true
+    },
     line_items: [
       {
         quantity: 1,
@@ -222,4 +248,77 @@ export async function createStripeCheckoutSession(input: StripeCheckoutInput): P
     sessionId: session.id,
     url: session.url
   };
+}
+
+export async function getStripeInvoiceByPaymentIntentId(
+  ownerEmail: string,
+  paymentIntentId: string
+): Promise<StripeInvoiceSummary> {
+  const stripe = getStripeClient();
+
+  const intent = await stripe.paymentIntents.retrieve(paymentIntentId, {
+    expand: ['latest_charge', 'customer']
+  });
+
+  const customerEmail =
+    typeof intent.customer === 'string'
+      ? undefined
+      : intent.customer && !('deleted' in intent.customer)
+        ? intent.customer.email
+        : null;
+  const receiptEmail = intent.receipt_email || null;
+  ensureStripeOwnership(ownerEmail, customerEmail || receiptEmail);
+
+  const charge = typeof intent.latest_charge === 'string' ? null : intent.latest_charge;
+
+  return {
+    paymentIntentId: intent.id,
+    chargeId: charge?.id,
+    status: intent.status,
+    amountEur: Number((intent.amount / 100).toFixed(2)),
+    currency: (intent.currency || 'eur').toUpperCase(),
+    createdAt: new Date(intent.created * 1000).toISOString(),
+    receiptUrl: charge?.receipt_url || undefined,
+    hostedInvoiceUrl: undefined,
+    invoicePdfUrl: undefined,
+    customerEmail: customerEmail || receiptEmail || undefined,
+    customerName: charge?.billing_details?.name || undefined
+  };
+}
+
+export async function getStripeInvoiceBySessionId(
+  ownerEmail: string,
+  sessionId: string
+): Promise<StripeInvoiceSummary> {
+  const stripe = getStripeClient();
+  const session = await stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ['payment_intent', 'customer', 'invoice']
+  });
+
+  const sessionEmail =
+    session.customer_details?.email ||
+    (typeof session.customer === 'string'
+      ? null
+      : session.customer && !('deleted' in session.customer)
+        ? session.customer.email
+        : null);
+  ensureStripeOwnership(ownerEmail, sessionEmail);
+
+  if (!session.payment_intent) {
+    throw new Error('Session has no payment intent');
+  }
+
+  const paymentIntentId =
+    typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent.id;
+
+  const summary = await getStripeInvoiceByPaymentIntentId(ownerEmail, paymentIntentId);
+
+  if (session.invoice) {
+    const invoiceId = typeof session.invoice === 'string' ? session.invoice : session.invoice.id;
+    const invoice = await stripe.invoices.retrieve(invoiceId);
+    summary.hostedInvoiceUrl = invoice.hosted_invoice_url || summary.hostedInvoiceUrl;
+    summary.invoicePdfUrl = invoice.invoice_pdf || summary.invoicePdfUrl;
+  }
+
+  return summary;
 }

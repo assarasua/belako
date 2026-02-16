@@ -26,6 +26,7 @@ app.get('/', (_req, res) => {
       commerceBootstrap: '/commerce/customer/bootstrap',
       commerceSetupIntent: '/commerce/setup-intent',
       commerceMethods: '/commerce/payment-methods',
+      commerceInvoice: '/commerce/invoice?sessionId=... | /commerce/invoice?paymentIntentId=...',
       walletAssets: '/wallet/nft-assets',
       walletGrants: '/wallet/grants',
       walletCollection: '/wallet/collection',
