@@ -2,7 +2,7 @@ export type Role = 'fan' | 'artist';
 export type FanTab = 'home' | 'live' | 'store' | 'rewards' | 'profile';
 export type ArtistTab = 'dashboard' | 'golive' | 'orders' | 'fans' | 'profile';
 export type LiveState = 'live' | 'reconnecting' | 'ended';
-export type SheetState = 'none' | 'checkout' | 'reward';
+export type SheetState = 'none' | 'checkout' | 'reward' | 'cardSetup';
 
 export type Stream = {
   id: string;
@@ -53,6 +53,56 @@ export type RewardHistoryItem = {
   label: string;
   at: string;
   type: 'coin' | 'purchase' | 'reward' | 'xp';
+};
+
+export type ProfileSettings = {
+  displayName: string;
+  username: string;
+  bio: string;
+  avatarUrl: string;
+  location: string;
+  website: string;
+  email: string;
+  phone?: string;
+  language: 'es' | 'en';
+  theme: 'dark' | 'light';
+  isPrivateProfile: boolean;
+  allowDm: boolean;
+  notifications: {
+    email: boolean;
+    push: boolean;
+    marketing: boolean;
+    liveAlerts: boolean;
+  };
+};
+
+export type NotificationPreferenceKey = keyof ProfileSettings['notifications'];
+
+export type Address = {
+  id: string;
+  label: string;
+  fullName: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  postalCode: string;
+  country: string;
+  isDefaultShipping: boolean;
+  isDefaultBilling: boolean;
+};
+
+export type SavedPaymentMethod = {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  isDefault: boolean;
+};
+
+export type BillingProfile = {
+  customerId: string;
+  methods: SavedPaymentMethod[];
 };
 
 export type SeasonPassTier = {

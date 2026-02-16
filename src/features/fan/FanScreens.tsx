@@ -1,8 +1,40 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { products, streams } from '../../lib/mock-data';
-import type { StorePriceSort } from '../../lib/types';
+import type { Address, StorePriceSort } from '../../lib/types';
 import type { FidelityModel } from '../../state/use-fidelity-state';
 import { liveBadgeText } from '../../state/use-fidelity-state';
+
+type AddressDraft = {
+  label: string;
+  fullName: string;
+  line1: string;
+  line2: string;
+  city: string;
+  postalCode: string;
+  country: string;
+};
+
+const emptyAddressDraft: AddressDraft = {
+  label: '',
+  fullName: '',
+  line1: '',
+  line2: '',
+  city: '',
+  postalCode: '',
+  country: 'España'
+};
+
+function toAddressDraft(address: Address): AddressDraft {
+  return {
+    label: address.label,
+    fullName: address.fullName,
+    line1: address.line1,
+    line2: address.line2 || '',
+    city: address.city,
+    postalCode: address.postalCode,
+    country: address.country
+  };
+}
 
 export function FanScreens({ model }: { model: FidelityModel }) {
   const {
@@ -28,7 +60,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     claimTierReward,
     claimedTierIds,
     conversion,
-    events,
     coinPolicy,
     canUseCoinDiscount,
     rewardHistory,
@@ -37,12 +68,40 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     seasonMissions,
     claimSeasonPassTier,
     claimSeasonMission,
-    notifications,
-    clearNotifications
+    profileSettings,
+    profileSummary,
+    updateProfileField,
+    toggleNotification,
+    addresses,
+    addAddress,
+    editAddress,
+    removeAddress,
+    billingProfile,
+    billingLoading,
+    billingError,
+    openCardSetup,
+    refreshPaymentMethods,
+    setDefaultSavedMethod,
+    removeSavedMethod,
+    logoutSession
   } = model;
   const [storeSort, setStoreSort] = useState<StorePriceSort>('price_asc');
   const [homeFeedCount, setHomeFeedCount] = useState(6);
   const [productImageLoadErrors, setProductImageLoadErrors] = useState<Record<string, boolean>>({});
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [addressDraft, setAddressDraft] = useState<AddressDraft>(emptyAddressDraft);
+  const [addressError, setAddressError] = useState('');
+  const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
+  const [passwordError, setPasswordError] = useState('');
+  const purchaseEntries = useMemo(
+    () => rewardHistory.filter((entry) => entry.type === 'purchase').slice(0, 6),
+    [rewardHistory]
+  );
+
   const homeSentinelRef = useRef<HTMLDivElement | null>(null);
 
   const sortedStoreProducts = useMemo(() => {
@@ -106,6 +165,31 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     const attendanceProgress = Math.min((attendanceCount / 20) * 50, 50);
     const spendProgress = Math.min((spend / 150) * 50, 50);
     return attendanceProgress + spendProgress;
+  }
+
+  function resetAddressEditor() {
+    setEditingAddressId(null);
+    setShowAddressForm(false);
+    setAddressDraft(emptyAddressDraft);
+    setAddressError('');
+  }
+
+  async function shareProfile() {
+    const profileUrl = `${window.location.origin}${window.location.pathname}#@${profileSummary.username}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Belako Superfan',
+          text: `Perfil fan de @${profileSummary.username}`,
+          url: profileUrl
+        });
+      } else {
+        await navigator.clipboard.writeText(profileUrl);
+      }
+      track('EVT_profile_shared', 'Perfil compartido');
+    } catch {
+      // user cancelled share flow
+    }
   }
 
   if (fanTab === 'home') {
@@ -275,9 +359,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
                   <small>Canje recompensa: {product.belakoCoinCost} BEL</small>
                 ) : null}
                 <div className="product-actions">
-                  <button onClick={() => openCheckout(product, 'fiat')}>
-                    Comprar merch (€)
-                  </button>
+                  <button onClick={() => openCheckout(product, 'fiat')}>Comprar merch (€)</button>
                   {product.purchaseType === 'eur_or_bel' ? (
                     <button className="ghost" onClick={() => openCheckout(product, 'coin')} disabled={!canRedeem}>
                       {!canRedeem ? 'BEL insuficiente' : 'Canjear con BEL'}
@@ -419,41 +501,382 @@ export function FanScreens({ model }: { model: FidelityModel }) {
 
   return (
     <section className="stack">
-      <article className="guide-card">
-        <h3>Centro de control fan</h3>
-        <p>Estado general de tu cuenta, notificaciones y eventos clave.</p>
+      <article className="profile-hero-card profile-cover">
+        <div className="profile-cover-glow" aria-hidden="true" />
+        <img className="profile-avatar" src={profileSettings.avatarUrl} alt={`Avatar ${profileSummary.displayName}`} />
+        <div className="profile-hero-copy">
+          <p className="hero-kicker">SUPERFAN PROFILE</p>
+          <h2>{profileSummary.displayName}</h2>
+          <p>@{profileSummary.username}</p>
+          <small>{profileSettings.bio}</small>
+          <small>{profileSettings.location} · {profileSettings.website}</small>
+        </div>
+        <div className="profile-hero-actions">
+          <button className="ghost" onClick={() => setProfileEditing((prev) => !prev)}>{profileEditing ? 'Cerrar edición' : 'Editar perfil'}</button>
+          <button className="ghost" onClick={shareProfile}>Compartir perfil</button>
+        </div>
       </article>
 
-      <h2>Perfil fan</h2>
-      <article className="metric-card">
-        <p>Estado</p>
-        <h3>{tiers[2].unlocked ? 'Superfan Belako' : tiers[0].unlocked ? 'Nivel 1 activo' : 'Fan casual'}</h3>
-      </article>
-      <article className="metric-card">
-        <p>KPI principal</p>
-        <h3>Conversion viewer a superfan {conversion}%</h3>
+      <article className="profile-kpi-grid">
+        <div className="profile-kpi-card">
+          <small>BEL Coin</small>
+          <strong>{belakoCoins}</strong>
+        </div>
+        <div className="profile-kpi-card">
+          <small>Asistencia</small>
+          <strong>{attendanceCount} directos</strong>
+        </div>
+        <div className="profile-kpi-card">
+          <small>Gasto total</small>
+          <strong>€{spend.toFixed(2)}</strong>
+        </div>
       </article>
 
-      <article className="metric-card">
+      <article className="metric-card profile-card fan-prime-card">
+        <p className="profile-section-title">Resumen fan</p>
+        <h3>{tiers[2].unlocked ? 'Superfan Belako' : tiers[1].unlocked ? 'Fan premium' : tiers[0].unlocked ? 'Fan activo' : 'Fan en progreso'}</h3>
+        <small>Nivel temporada: {seasonPass.currentLevel} · XP {seasonPass.currentXp}/{seasonPass.nextLevelXp}</small>
+        <div className="progress-track" aria-hidden="true">
+          <div
+            className="progress-fill"
+            style={{ width: `${Math.min((seasonPass.currentXp / Math.max(seasonPass.nextLevelXp, 1)) * 100, 100)}%` }}
+          />
+        </div>
+        <small>Racha: {seasonPass.streakDays} días · Conversión fan: {conversion}%</small>
         <div className="row actions-row">
-          <p>Notificaciones</p>
-          <button className="ghost" onClick={clearNotifications}>Limpiar</button>
-        </div>
-        <div className="event-list">
-          {notifications.length === 0 ? <p>Sin notificaciones.</p> : notifications.slice(0, 5).map((n) => <p key={n.id}><strong>{n.title}</strong> {n.message} ({n.at})</p>)}
+          <button onClick={() => setFanTab('rewards')}>Ver progreso</button>
         </div>
       </article>
 
-      <article className="metric-card">
-        <p>Eventos recientes</p>
-        <div className="event-list">
-          {events.slice(0, 6).map((event) => (
-            <p key={`${event.code}-${event.at}`}>
-              <strong>{event.code}</strong> {event.message} ({event.at})
-            </p>
+      <article className="metric-card profile-card">
+        <p className="profile-section-title">Configuración de cuenta</p>
+        <div className="row actions-row">
+          <span className="store-badge">{profileSettings.theme.toUpperCase()}</span>
+        </div>
+
+        {profileEditing ? (
+          <div className="profile-form-grid">
+            <label>Nombre
+              <input value={profileSettings.displayName} onChange={(e) => updateProfileField('displayName', e.target.value)} />
+            </label>
+            <label>Usuario
+              <input value={profileSettings.username} onChange={(e) => updateProfileField('username', e.target.value.replace(/\s+/g, ''))} />
+            </label>
+            <label>Bio
+              <textarea value={profileSettings.bio} onChange={(e) => updateProfileField('bio', e.target.value)} rows={3} />
+            </label>
+            <label>Avatar URL
+              <input value={profileSettings.avatarUrl} onChange={(e) => updateProfileField('avatarUrl', e.target.value)} />
+            </label>
+            <label>Ubicación
+              <input value={profileSettings.location} onChange={(e) => updateProfileField('location', e.target.value)} />
+            </label>
+            <label>Website
+              <input value={profileSettings.website} onChange={(e) => updateProfileField('website', e.target.value)} />
+            </label>
+            <label>Email
+              <input type="email" value={profileSettings.email} onChange={(e) => updateProfileField('email', e.target.value)} />
+            </label>
+            <label>Teléfono
+              <input value={profileSettings.phone || ''} onChange={(e) => updateProfileField('phone', e.target.value)} />
+            </label>
+            <label>Idioma
+              <select value={profileSettings.language} onChange={(e) => updateProfileField('language', e.target.value as 'es' | 'en')}>
+                <option value="es">Español</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+            <label>Tema
+              <select value={profileSettings.theme} onChange={(e) => updateProfileField('theme', e.target.value as 'dark' | 'light')}>
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </label>
+
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileSettings.isPrivateProfile} onChange={() => updateProfileField('isPrivateProfile', !profileSettings.isPrivateProfile)} />
+              Perfil privado
+            </label>
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileSettings.allowDm} onChange={() => updateProfileField('allowDm', !profileSettings.allowDm)} />
+              Permitir mensajes directos
+            </label>
+
+            <p>Notificaciones</p>
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileSettings.notifications.email} onChange={() => toggleNotification('email')} />
+              Email
+            </label>
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileSettings.notifications.push} onChange={() => toggleNotification('push')} />
+              Push
+            </label>
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileSettings.notifications.marketing} onChange={() => toggleNotification('marketing')} />
+              Marketing
+            </label>
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileSettings.notifications.liveAlerts} onChange={() => toggleNotification('liveAlerts')} />
+              Alertas live
+            </label>
+          </div>
+        ) : (
+          <div className="profile-summary-grid">
+            <small>Email: {profileSettings.email || 'No configurado'}</small>
+            <small>Teléfono: {profileSettings.phone || 'No configurado'}</small>
+            <small>Idioma: {profileSettings.language.toUpperCase()}</small>
+            <small>Privacidad: {profileSettings.isPrivateProfile ? 'Privado' : 'Público'}</small>
+            <small>DM: {profileSettings.allowDm ? 'Permitidos' : 'Bloqueados'}</small>
+          </div>
+        )}
+      </article>
+
+      <article className="metric-card profile-card">
+        <p className="profile-section-title">Métodos de pago</p>
+        <div className="row actions-row">
+          <div className="inline-actions">
+            <button className="ghost" onClick={refreshPaymentMethods} disabled={billingLoading}>Actualizar</button>
+            <button className="ghost" onClick={openCardSetup}>Añadir tarjeta</button>
+          </div>
+        </div>
+
+        {billingLoading ? <p className="hint">Cargando métodos de pago...</p> : null}
+        {billingError ? <p className="error-text">{billingError}</p> : null}
+
+        {!billingLoading && !billingProfile?.methods.length ? (
+          <p className="hint">No tienes tarjetas guardadas. Añade una para acelerar tu checkout.</p>
+        ) : null}
+
+        {!billingLoading && billingProfile?.methods.length ? (
+          <div className="saved-methods">
+            {billingProfile.methods.map((method) => (
+              <article key={method.id} className="saved-method-item">
+                <strong>{method.brand.toUpperCase()} •••• {method.last4}</strong>
+                <small>Caduca {method.expMonth}/{method.expYear}</small>
+                <div className="row actions-row">
+                  {method.isDefault ? <span className="store-badge">Por defecto</span> : <button className="ghost" onClick={() => setDefaultSavedMethod(method.id)}>Hacer default</button>}
+                  <button className="ghost" onClick={() => removeSavedMethod(method.id)}>Eliminar</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </article>
+
+      <article className="metric-card profile-card">
+        <p className="profile-section-title">Direcciones</p>
+        <div className="row actions-row">
+          <small>
+            Envío por defecto: {profileSummary.defaultShipping ? profileSummary.defaultShipping.label : 'No definido'}
+          </small>
+          <button
+            className="ghost"
+            onClick={() => {
+              setEditingAddressId(null);
+              setAddressDraft(emptyAddressDraft);
+              setAddressError('');
+              setShowAddressForm(true);
+            }}
+          >
+            Nueva dirección
+          </button>
+        </div>
+
+        <div className="address-list address-list-pro">
+          {addresses.length === 0 ? <p className="hint">No hay direcciones guardadas.</p> : null}
+          {addresses.map((address) => (
+            <article key={address.id} className="address-card">
+              <div className="address-card-top">
+                <strong>{address.label}</strong>
+                <div className="store-badges">
+                  {address.isDefaultShipping ? <span className="store-badge">ENVÍO</span> : null}
+                  {address.isDefaultBilling ? <span className="store-badge store-badge-reward">FACTURA</span> : null}
+                </div>
+              </div>
+              <small>{address.fullName}</small>
+              <small>{address.line1}{address.line2 ? `, ${address.line2}` : ''}</small>
+              <small>{address.city} · {address.postalCode} · {address.country}</small>
+              <div className="store-badges">
+                <button className="ghost" onClick={() => {
+                  setEditingAddressId(address.id);
+                  setAddressDraft(toAddressDraft(address));
+                  setAddressError('');
+                  setShowAddressForm(true);
+                }}>Editar</button>
+                <button className="ghost" onClick={() => removeAddress(address.id)}>Eliminar</button>
+              </div>
+            </article>
           ))}
         </div>
+
+        {showAddressForm ? (
+          <article className="summary-box address-form-shell">
+            <p>{editingAddressId ? 'Editar dirección' : 'Nueva dirección'}</p>
+            <div className="profile-form-grid">
+              <label>Etiqueta
+                <input value={addressDraft.label} onChange={(e) => setAddressDraft((prev) => ({ ...prev, label: e.target.value }))} />
+              </label>
+              <label>Nombre completo
+                <input value={addressDraft.fullName} onChange={(e) => setAddressDraft((prev) => ({ ...prev, fullName: e.target.value }))} />
+              </label>
+              <label>Dirección
+                <input value={addressDraft.line1} onChange={(e) => setAddressDraft((prev) => ({ ...prev, line1: e.target.value }))} />
+              </label>
+              <label>Línea 2
+                <input value={addressDraft.line2} onChange={(e) => setAddressDraft((prev) => ({ ...prev, line2: e.target.value }))} />
+              </label>
+              <div className="row">
+                <label>Ciudad
+                  <input value={addressDraft.city} onChange={(e) => setAddressDraft((prev) => ({ ...prev, city: e.target.value }))} />
+                </label>
+                <label>CP
+                  <input value={addressDraft.postalCode} onChange={(e) => setAddressDraft((prev) => ({ ...prev, postalCode: e.target.value }))} />
+                </label>
+              </div>
+              <label>País
+                <input value={addressDraft.country} onChange={(e) => setAddressDraft((prev) => ({ ...prev, country: e.target.value }))} />
+              </label>
+            </div>
+            {addressError ? <p className="error-text">{addressError}</p> : null}
+            <div className="row actions-row">
+              <button
+                onClick={() => {
+                  if (!addressDraft.label || !addressDraft.fullName || !addressDraft.line1 || !addressDraft.city || !addressDraft.postalCode) {
+                    setAddressError('Completa los campos obligatorios: etiqueta, nombre, dirección, ciudad y CP.');
+                    return;
+                  }
+                  if (editingAddressId) {
+                    editAddress(editingAddressId, addressDraft);
+                  } else {
+                    addAddress(addressDraft);
+                  }
+                  resetAddressEditor();
+                }}
+              >
+                {editingAddressId ? 'Guardar cambios' : 'Añadir dirección'}
+              </button>
+              <button className="ghost" onClick={resetAddressEditor}>Cancelar</button>
+            </div>
+          </article>
+        ) : null}
       </article>
+
+      <article className="metric-card profile-card">
+        <p className="profile-section-title">Compras</p>
+        {purchaseEntries.length === 0 ? (
+          <p className="hint">Todavía no hay compras registradas.</p>
+        ) : (
+          <div className="event-list">
+            {purchaseEntries.map((purchase) => (
+              <article key={purchase.id} className="purchase-item">
+                <strong>{purchase.label}</strong>
+                <small>{purchase.at}</small>
+                <button
+                  className="ghost"
+                  onClick={() => setOpenInvoiceId((prev) => (prev === purchase.id ? null : purchase.id))}
+                >
+                  {openInvoiceId === purchase.id ? 'Ocultar factura' : 'Ver factura'}
+                </button>
+                {openInvoiceId === purchase.id ? (
+                  <div className="invoice-box">
+                    <small><strong>Factura:</strong> INV-{purchase.id.slice(-6).toUpperCase()}</small>
+                    <small><strong>Cliente:</strong> {profileSummary.displayName}</small>
+                    <small><strong>Concepto:</strong> {purchase.label}</small>
+                    <small><strong>Fecha:</strong> {purchase.at}</small>
+                    <small><strong>Estado:</strong> Pagada</small>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        )}
+        <div className="row actions-row">
+          <button onClick={() => setFanTab('store')}>Ir a tienda</button>
+        </div>
+      </article>
+
+      <article className="metric-card profile-card">
+        <p className="profile-section-title">Seguridad</p>
+        <small>Mantén tu cuenta protegida en este dispositivo.</small>
+        <div className="row actions-row security-actions">
+          <button
+            className="ghost"
+            onClick={() => {
+              setShowPasswordForm((prev) => !prev);
+              setPasswordError('');
+            }}
+          >
+            {showPasswordForm ? 'Cerrar gestión contraseña' : 'Gestionar contraseña'}
+          </button>
+        </div>
+        {showPasswordForm ? (
+          <article className="summary-box address-form-shell">
+            <p>Cambiar contraseña</p>
+            <div className="profile-form-grid">
+              <label>Contraseña actual
+                <input
+                  type="password"
+                  value={passwordForm.current}
+                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, current: e.target.value }))}
+                />
+              </label>
+              <label>Nueva contraseña
+                <input
+                  type="password"
+                  value={passwordForm.next}
+                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, next: e.target.value }))}
+                />
+              </label>
+              <label>Confirmar nueva contraseña
+                <input
+                  type="password"
+                  value={passwordForm.confirm}
+                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirm: e.target.value }))}
+                />
+              </label>
+            </div>
+            {passwordError ? <p className="error-text">{passwordError}</p> : null}
+            <div className="row actions-row">
+              <button
+                onClick={() => {
+                  if (!passwordForm.current || !passwordForm.next || !passwordForm.confirm) {
+                    setPasswordError('Completa todos los campos.');
+                    return;
+                  }
+                  if (passwordForm.next.length < 8) {
+                    setPasswordError('La nueva contraseña debe tener al menos 8 caracteres.');
+                    return;
+                  }
+                  if (passwordForm.next !== passwordForm.confirm) {
+                    setPasswordError('La confirmación no coincide con la nueva contraseña.');
+                    return;
+                  }
+                  setPasswordError('');
+                  setPasswordForm({ current: '', next: '', confirm: '' });
+                  setShowPasswordForm(false);
+                  track('EVT_password_change_requested', 'Solicitud de cambio de contraseña desde perfil');
+                }}
+              >
+                Guardar contraseña
+              </button>
+              <button
+                className="ghost"
+                onClick={() => {
+                  setPasswordForm({ current: '', next: '', confirm: '' });
+                  setPasswordError('');
+                }}
+              >
+                Limpiar
+              </button>
+            </div>
+            <small>En MVP este cambio se registra localmente hasta conectar endpoint backend.</small>
+          </article>
+        ) : null}
+      </article>
+
+      <div className="row actions-row">
+        <button className="ghost" onClick={logoutSession}>Cerrar sesión</button>
+      </div>
     </section>
   );
 }

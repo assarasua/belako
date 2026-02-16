@@ -11,5 +11,6 @@ export const env = {
   nftMinterPrivateKey: process.env.NFT_MINTER_PRIVATE_KEY || '',
   nftBaseUri: process.env.NFT_BASE_URI || 'https://belako.bizkardolab.eu/metadata',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
+  stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173'
 };

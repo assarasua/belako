@@ -160,7 +160,7 @@
 
 .store-sort-row {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1fr;
   gap: var(--s-2);
 }
 
@@ -232,10 +232,10 @@
 
 .battle-pass-card {
   border-radius: var(--r-md);
-  border: 1px solid rgba(255, 171, 221, 0.58);
+  border: 1px solid rgba(255, 151, 211, 0.68);
   background:
-    radial-gradient(circle at top right, rgba(255, 123, 194, 0.22), transparent 48%),
-    linear-gradient(160deg, rgba(33, 42, 61, 0.96), rgba(17, 24, 39, 0.96));
+    radial-gradient(circle at top right, rgba(255, 121, 196, 0.3), transparent 52%),
+    linear-gradient(160deg, rgba(27, 35, 50, 0.98), rgba(14, 20, 32, 0.98));
   padding: var(--s-3);
   display: grid;
   gap: var(--s-2);
@@ -260,7 +260,7 @@
   display: flex;
   justify-content: space-between;
   gap: var(--s-2);
-  color: #d6e1f8;
+  color: #f8ddeb;
 }
 
 .battle-tier-grid,
@@ -272,8 +272,8 @@
 .battle-tier-card,
 .mission-card {
   border-radius: var(--r-sm);
-  border: 1px solid #4d638c;
-  background: rgba(20, 29, 45, 0.92);
+  border: 1px solid rgba(255, 155, 215, 0.38);
+  background: rgba(21, 27, 41, 0.94);
   padding: 0.6rem 0.68rem;
   display: grid;
   gap: 6px;
@@ -281,12 +281,13 @@
 }
 
 .battle-tier-card.unlocked {
-  border-color: rgba(255, 174, 224, 0.7);
-  box-shadow: 0 0 0 1px rgba(255, 174, 224, 0.28) inset;
+  border-color: rgba(255, 161, 219, 0.82);
+  box-shadow: 0 0 0 1px rgba(255, 161, 219, 0.3) inset;
 }
 
 .mission-card.completed {
-  border-color: rgba(126, 199, 255, 0.74);
+  border-color: rgba(255, 184, 228, 0.78);
+  box-shadow: 0 0 0 1px rgba(255, 184, 228, 0.24) inset;
 }
 
 .mission-card.claimed {
@@ -296,10 +297,11 @@
 .mission-xp {
   width: fit-content;
   border-radius: 999px;
-  border: 1px solid rgba(126, 199, 255, 0.62);
-  background: rgba(126, 199, 255, 0.15);
+  border: 1px solid rgba(255, 173, 223, 0.66);
+  background: rgba(255, 173, 223, 0.18);
   padding: 0.14rem 0.44rem;
   font-size: 0.68rem;
+  color: #ffe8f6;
 }
 
 .sheet {
@@ -402,6 +404,10 @@ details p {
   align-items: center;
 }
 
+.security-actions {
+  grid-template-columns: 1fr;
+}
+
 .history-tag {
   display: inline-block;
   border-radius: 999px;
@@ -424,8 +430,8 @@ details p {
 
 .history-reward,
 .history-purchase {
-  border-color: rgba(174, 188, 219, 0.58);
-  background: rgba(174, 188, 219, 0.14);
+  border-color: rgba(255, 170, 222, 0.62);
+  background: rgba(255, 170, 222, 0.16);
 }
 
 @keyframes card-in {
@@ -442,5 +448,199 @@ details p {
 @keyframes xp-fill {
   from {
     width: 0;
+  }
+}
+
+.profile-hero-card {
+  border-radius: var(--r-md);
+  border: 1px solid rgba(255, 166, 218, 0.6);
+  background:
+    radial-gradient(circle at top right, rgba(255, 110, 184, 0.2), transparent 50%),
+    linear-gradient(155deg, rgba(30, 42, 66, 0.97), rgba(16, 24, 40, 0.96));
+  padding: var(--s-3);
+  display: grid;
+  gap: var(--s-2);
+}
+
+.profile-cover {
+  position: relative;
+  overflow: hidden;
+}
+
+.profile-cover-glow {
+  position: absolute;
+  right: -32px;
+  top: -40px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 145, 209, 0.5), rgba(255, 145, 209, 0));
+  pointer-events: none;
+}
+
+.profile-avatar {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 179, 226, 0.65);
+}
+
+.profile-hero-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.profile-hero-actions,
+.inline-actions,
+.method-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-card {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.profile-section-title {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffd7ee;
+  font-weight: 800;
+}
+
+.profile-kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.profile-kpi-card {
+  border-radius: var(--r-sm);
+  border: 1px solid #4f6590;
+  background: rgba(17, 26, 43, 0.86);
+  padding: 0.58rem;
+  display: grid;
+  gap: 2px;
+}
+
+.profile-kpi-card small {
+  color: #c9d7f5;
+  font-size: 0.68rem;
+}
+
+.profile-kpi-card strong {
+  font-size: 0.92rem;
+}
+
+.fan-prime-card {
+  border-color: rgba(255, 182, 227, 0.7);
+  box-shadow: 0 0 0 1px rgba(255, 182, 227, 0.22) inset;
+  background:
+    radial-gradient(circle at top right, rgba(255, 138, 205, 0.18), transparent 50%),
+    linear-gradient(160deg, rgba(27, 39, 60, 0.96), rgba(16, 24, 39, 0.96));
+}
+
+.purchase-item {
+  border-radius: var(--r-sm);
+  border: 1px solid #43567a;
+  background: rgba(16, 24, 39, 0.78);
+  padding: 0.5rem 0.56rem;
+  display: grid;
+  gap: 2px;
+}
+
+.invoice-box {
+  margin-top: 4px;
+  border-radius: var(--r-sm);
+  border: 1px dashed rgba(255, 169, 221, 0.66);
+  background: rgba(25, 17, 34, 0.75);
+  padding: 0.44rem 0.52rem;
+  display: grid;
+  gap: 2px;
+}
+
+.profile-form-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-form-grid label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: #d9e3f6;
+}
+
+.profile-form-grid textarea {
+  resize: vertical;
+  min-height: 82px;
+}
+
+.profile-summary-grid {
+  display: grid;
+  gap: 4px;
+}
+
+.saved-methods,
+.address-list {
+  display: grid;
+  gap: 8px;
+}
+
+.saved-method-item,
+.address-card {
+  border-radius: var(--r-sm);
+  border: 1px solid #445a82;
+  background: rgba(18, 28, 46, 0.86);
+  padding: 0.56rem 0.64rem;
+  display: grid;
+  gap: 6px;
+}
+
+.address-list-pro {
+  gap: 10px;
+}
+
+.address-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.address-form-shell {
+  gap: 10px;
+}
+
+.card-mount {
+  min-height: 48px;
+  border-radius: var(--r-sm);
+  border: 1px solid #50658d;
+  background: rgba(17, 26, 41, 0.85);
+  padding: 0.56rem;
+}
+
+.card-mount .StripeElement {
+  color: #e7efff;
+}
+
+@media (min-width: 380px) {
+  .profile-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 560px) {
+  .profile-kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .store-sort-row {
+    grid-template-columns: repeat(2, 1fr);
   }
 }

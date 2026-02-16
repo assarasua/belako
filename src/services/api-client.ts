@@ -1,3 +1,5 @@
+import type { BillingProfile } from '../lib/types';
+
 export type ApiResult<T> = {
   ok: boolean;
   data?: T;
@@ -5,11 +7,8 @@ export type ApiResult<T> = {
 };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
-
-export async function fakeApi<T>(data: T, delayMs = 180): Promise<ApiResult<T>> {
-  await new Promise((resolve) => setTimeout(resolve, delayMs));
-  return { ok: true, data };
-}
+const AUTH_TOKEN_KEY = 'belako_fan_token';
+const AUTH_EMAIL_KEY = 'belako_fan_email';
 
 type StripeCheckoutPayload = {
   productId: string;
@@ -17,18 +16,72 @@ type StripeCheckoutPayload = {
   customerEmail: string;
   totalAmountEur: number;
   useCoinDiscount: boolean;
+  paymentMethodId?: string;
+  saveForFuture?: boolean;
 };
 
-type StripeCheckoutResponse = {
-  sessionId: string;
-  url: string;
+type StripeCheckoutResponse =
+  | {
+      mode: 'checkout';
+      sessionId: string;
+      url: string;
+    }
+  | {
+      mode: 'payment_intent';
+      status: 'succeeded';
+      paymentIntentId: string;
+    };
+
+type AuthLoginResponse = {
+  token: string;
+  user: { email: string; role: 'fan' | 'artist' };
 };
+
+async function getOrCreateAuthToken(): Promise<string | null> {
+  const existing = localStorage.getItem(AUTH_TOKEN_KEY);
+  if (existing) {
+    return existing;
+  }
+
+  const existingEmail = localStorage.getItem(AUTH_EMAIL_KEY);
+  const email = existingEmail || `fan-${Math.random().toString(36).slice(2, 10)}@belako.app`;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, role: 'fan' })
+    });
+    const data = (await response.json()) as AuthLoginResponse;
+    if (!response.ok || !data.token) {
+      return null;
+    }
+    localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+    localStorage.setItem(AUTH_EMAIL_KEY, email);
+    return data.token;
+  } catch {
+    return null;
+  }
+}
+
+async function authorizedFetch(path: string, init?: RequestInit): Promise<Response> {
+  const token = await getOrCreateAuthToken();
+  const headers = new Headers(init?.headers || {});
+  headers.set('Content-Type', 'application/json');
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  return fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers
+  });
+}
 
 export async function createStripeCheckoutSession(payload: StripeCheckoutPayload): Promise<ApiResult<StripeCheckoutResponse>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/commerce/checkout`, {
+    const response = await authorizedFetch('/commerce/checkout', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
@@ -37,6 +90,95 @@ export async function createStripeCheckoutSession(payload: StripeCheckoutPayload
       return { ok: false, error: data?.error || 'Checkout failed' };
     }
 
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function fetchStripeConfig(): Promise<ApiResult<{ publishableKey: string }>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/commerce/config`);
+    const data = await response.json();
+    if (!response.ok) {
+      return { ok: false, error: data?.error || 'No se pudo cargar configuración de Stripe.' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function bootstrapCustomer(): Promise<ApiResult<{ customerId: string }>> {
+  try {
+    const response = await authorizedFetch('/commerce/customer/bootstrap', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { ok: false, error: data?.error || 'No se pudo crear el customer de Stripe.' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function createSetupIntent(customerId: string): Promise<ApiResult<{ clientSecret: string }>> {
+  try {
+    const response = await authorizedFetch('/commerce/setup-intent', {
+      method: 'POST',
+      body: JSON.stringify({ customerId })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { ok: false, error: data?.error || 'No se pudo crear SetupIntent.' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function fetchPaymentMethods(): Promise<ApiResult<BillingProfile>> {
+  try {
+    const response = await authorizedFetch('/commerce/payment-methods');
+    const data = await response.json();
+    if (!response.ok) {
+      return { ok: false, error: data?.error || 'No se pudieron cargar métodos de pago.' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function setDefaultPaymentMethod(paymentMethodId: string): Promise<ApiResult<{ ok: true }>> {
+  try {
+    const response = await authorizedFetch('/commerce/payment-methods/default', {
+      method: 'POST',
+      body: JSON.stringify({ paymentMethodId })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { ok: false, error: data?.error || 'No se pudo actualizar la tarjeta por defecto.' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function removePaymentMethod(paymentMethodId: string): Promise<ApiResult<{ ok: true }>> {
+  try {
+    const response = await authorizedFetch(`/commerce/payment-methods/${encodeURIComponent(paymentMethodId)}`, {
+      method: 'DELETE'
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      return { ok: false, error: data?.error || 'No se pudo eliminar la tarjeta.' };
+    }
     return { ok: true, data };
   } catch {
     return { ok: false, error: 'No se pudo conectar con el backend.' };
