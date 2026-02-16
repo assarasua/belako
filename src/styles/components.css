@@ -83,6 +83,11 @@
   font-weight: 800;
 }
 
+.auth-head {
+  display: grid;
+  gap: 8px;
+}
+
 .auth-copy {
   margin: 0;
   color: #dbe6ff;
@@ -121,14 +126,53 @@
   gap: 8px;
 }
 
+.auth-mode-switch-pro button {
+  min-height: 44px;
+}
+
 .auth-mode-switch button {
   min-height: 42px;
+}
+
+.auth-feature-list {
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(255, 162, 219, 0.35);
+  background: rgba(18, 27, 44, 0.78);
+  padding: 0.62rem 0.72rem;
+  display: grid;
+  gap: 6px;
+}
+
+.auth-feature-list p {
+  margin: 0;
+  color: #ffd7ee;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.auth-feature-list ul {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 4px;
+  color: #dbe7ff;
+  font-size: 0.8rem;
+}
+
+.auth-cta-shell {
+  display: grid;
+  gap: 8px;
 }
 
 .auth-footnote {
   color: #bfcde9;
   font-size: 0.75rem;
   line-height: 1.4;
+}
+
+.auth-footnote-pro {
+  border-top: 1px solid rgba(255, 166, 218, 0.26);
+  padding-top: 10px;
 }
 
 .onboarding-icon-wrap {

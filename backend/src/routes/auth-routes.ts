@@ -2,6 +2,7 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { env } from '../config/env.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -91,4 +92,15 @@ authRoutes.post('/google', async (req, res) => {
   } catch {
     res.status(500).json({ error: 'No se pudo verificar Google SSO en este momento.' });
   }
+});
+
+authRoutes.get('/session', requireAuth, (req, res) => {
+  const email = (req.authUser?.email || req.authUser?.sub || '').trim().toLowerCase();
+  res.json({
+    user: {
+      email,
+      role: req.authUser?.role || 'fan',
+      authProvider: req.authUser?.authProvider || 'email'
+    }
+  });
 });

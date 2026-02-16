@@ -37,6 +37,10 @@ type AuthLoginResponse = {
   user: { email: string; role: 'fan' | 'artist'; authProvider?: 'google' | 'email' };
 };
 
+type AuthSessionResponse = {
+  user: { email: string; role: 'fan' | 'artist'; authProvider?: 'google' | 'email' };
+};
+
 async function authorizedFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = localStorage.getItem(AUTH_TOKEN_KEY);
   const headers = new Headers(init?.headers || {});
@@ -82,6 +86,24 @@ export async function loginWithGoogle(idToken: string): Promise<ApiResult<AuthLo
   } catch {
     return { ok: false, error: 'No se pudo conectar con el backend.' };
   }
+}
+
+export async function fetchAuthSession(): Promise<ApiResult<AuthSessionResponse>> {
+  try {
+    const response = await authorizedFetch('/auth/session');
+    const data = (await response.json()) as AuthSessionResponse & { error?: string };
+    if (!response.ok || !data?.user?.email) {
+      return { ok: false, error: data?.error || 'Sesión no válida.' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo verificar la sesión.' };
+  }
+}
+
+export function clearStoredAuth() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_EMAIL_KEY);
 }
 
 export async function createStripeCheckoutSession(payload: StripeCheckoutPayload): Promise<ApiResult<StripeCheckoutResponse>> {

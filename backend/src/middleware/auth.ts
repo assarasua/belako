@@ -5,6 +5,8 @@ import { env } from '../config/env.js';
 export type AuthUser = {
   sub: string;
   role: 'fan' | 'artist' | 'admin';
+  email?: string;
+  authProvider?: 'google' | 'email';
 };
 
 declare module 'express-serve-static-core' {

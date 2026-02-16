@@ -104,15 +104,17 @@ export function AuthGate({ model }: { model: FidelityModel }) {
   return (
     <main className="auth-shell" aria-label="Inicio de sesión">
       <section className="auth-card">
-        <p className="auth-kicker">Belako SuperFan App</p>
-        <h1>{authIntent === 'login' ? 'Inicia sesión con Google' : 'Regístrate con Google'}</h1>
-        <p className="auth-copy">
-          {authIntent === 'login'
-            ? 'Accede a tus directos, compras y progreso fan al instante.'
-            : 'Crea tu cuenta fan y descubre la experiencia Belako desde cero.'}
-        </p>
+        <header className="auth-head">
+          <p className="auth-kicker">Belako SuperFan App</p>
+          <h1>{authIntent === 'login' ? 'Bienvenido de vuelta' : 'Crea tu Fan Zone'}</h1>
+          <p className="auth-copy">
+            {authIntent === 'login'
+              ? 'Accede a tus conciertos, compras y progreso de fan.'
+              : 'Regístrate y empieza tu journey de tiers Belako desde el primer directo.'}
+          </p>
+        </header>
 
-        <div className="auth-mode-switch" role="tablist" aria-label="Modo de acceso">
+        <div className="auth-mode-switch auth-mode-switch-pro" role="tablist" aria-label="Modo de acceso">
           <button
             className={authIntent === 'login' ? 'primary' : 'ghost'}
             role="tab"
@@ -132,21 +134,32 @@ export function AuthGate({ model }: { model: FidelityModel }) {
         </div>
 
         <div className="auth-icon-row" aria-hidden="true">
-          <span className="auth-icon">LIVE</span>
-          <span className="auth-icon">SHOP</span>
-          <span className="auth-icon">XP</span>
+          <span className="auth-icon">CONCIERTOS</span>
+          <span className="auth-icon">TIENDA</span>
+          <span className="auth-icon">JOURNEY</span>
         </div>
 
-        {canRenderGoogle ? <div className="auth-google-button" ref={googleButtonRef} /> : null}
+        <article className="auth-feature-list">
+          <p>Incluye:</p>
+          <ul>
+            <li>Acceso rápido a directos y conciertos.</li>
+            <li>Checkout en euros con métodos guardados.</li>
+            <li>Progreso por tiers: Fan, Super, Ultra, God.</li>
+          </ul>
+        </article>
 
-        {!canRenderGoogle ? (
-          <p className="error-text">Falta configurar `VITE_GOOGLE_CLIENT_ID` para habilitar Google SSO.</p>
-        ) : null}
+        <div className="auth-cta-shell">
+          {canRenderGoogle ? <div className="auth-google-button" ref={googleButtonRef} /> : null}
 
-        {model.authError ? <p className="error-text">{model.authError}</p> : null}
-        {model.authStatus === 'logging_in' ? <p className="hint">Validando sesión con Google...</p> : null}
+          {!canRenderGoogle ? (
+            <p className="error-text">Falta configurar `VITE_GOOGLE_CLIENT_ID` para habilitar Google SSO.</p>
+          ) : null}
 
-        <small className="auth-footnote">
+          {model.authError ? <p className="error-text">{model.authError}</p> : null}
+          {model.authStatus === 'logging_in' ? <p className="hint">Validando sesión segura con Google...</p> : null}
+        </div>
+
+        <small className="auth-footnote auth-footnote-pro">
           Al continuar aceptas el uso de inicio de sesión seguro y el tratamiento de datos para tu cuenta fan.
         </small>
       </section>

@@ -17,8 +17,10 @@ import type {
 } from '../lib/types';
 import {
   bootstrapCustomer,
+  clearStoredAuth,
   createSetupIntent,
   createStripeCheckoutSession,
+  fetchAuthSession,
   fetchPaymentMethods,
   fetchStripeInvoice,
   fetchStripeConfig,
@@ -301,22 +303,53 @@ export function useFidelityState() {
   }
 
   useEffect(() => {
+    let cancelled = false;
     setProfileSettings(safeReadProfileSettings());
     setAddresses(safeReadAddresses());
     setRewardHistory(safeReadRewardHistory());
     setPurchases(safeReadPurchases());
-    const savedEmail = (localStorage.getItem(AUTH_EMAIL_KEY) || '').trim().toLowerCase();
-    const savedToken = localStorage.getItem(AUTH_TOKEN_KEY) || '';
-    if (savedEmail && savedToken) {
+
+    async function bootstrapSession() {
+      const savedToken = localStorage.getItem(AUTH_TOKEN_KEY) || '';
+      if (!savedToken) {
+        if (!cancelled) {
+          setAuthStatus('logged_out');
+        }
+        return;
+      }
+
+      const session = await fetchAuthSession();
+      if (!session.ok || !session.data?.user?.email) {
+        clearStoredAuth();
+        if (!cancelled) {
+          setAuthStatus('logged_out');
+          setAuthUserEmail('');
+          setAuthProvider(null);
+        }
+        return;
+      }
+
+      const email = session.data.user.email.trim().toLowerCase();
+      if (cancelled) {
+        return;
+      }
       setAuthStatus('logged_in');
-      setAuthUserEmail(savedEmail);
-      setAuthProvider('google');
-      setIsNewUser(computeIsNewUser(savedEmail));
-      setProfileSettings((prev) => ({ ...prev, email: savedEmail }));
-      setCheckoutForm((prev) => ({ ...prev, email: savedEmail }));
-      return;
+      setAuthUserEmail(email);
+      setAuthProvider(session.data.user.authProvider || 'email');
+      setIsNewUser(computeIsNewUser(email));
+      setProfileSettings((prev) => ({ ...prev, email: prev.email || email }));
+      setCheckoutForm((prev) => ({ ...prev, email }));
+      try {
+        localStorage.setItem(AUTH_EMAIL_KEY, email);
+      } catch {
+        // localStorage may be blocked
+      }
     }
-    setAuthStatus('logged_out');
+
+    void bootstrapSession();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const shouldShowOnboarding = authStatus === 'logged_in' && isNewUser && !onboardingDoneInSession;
@@ -891,8 +924,7 @@ export function useFidelityState() {
   }
 
   function logoutSession() {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    localStorage.removeItem(AUTH_EMAIL_KEY);
+    clearStoredAuth();
     setBillingProfile(null);
     setSelectedPaymentMethodId('');
     setAuthStatus('logged_out');
