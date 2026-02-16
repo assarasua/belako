@@ -87,6 +87,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   const [productImageLoadErrors, setProductImageLoadErrors] = useState<Record<string, boolean>>({});
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileSettings>(profileSettings);
+  const [avatarUploadError, setAvatarUploadError] = useState('');
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addressDraft, setAddressDraft] = useState<AddressDraft>(emptyAddressDraft);
@@ -196,12 +197,43 @@ export function FanScreens({ model }: { model: FidelityModel }) {
 
   function openProfileEditor() {
     setProfileDraft(profileSettings);
+    setAvatarUploadError('');
     setProfileEditing(true);
   }
 
   function closeProfileEditor() {
     setProfileDraft(profileSettings);
+    setAvatarUploadError('');
     setProfileEditing(false);
+  }
+
+  function handleAvatarFileSelected(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      setAvatarUploadError('Selecciona una imagen válida (JPG, PNG, WEBP...).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarUploadError('La imagen supera 5MB. Sube una versión más ligera.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (!result) {
+        setAvatarUploadError('No se pudo leer la imagen seleccionada.');
+        return;
+      }
+      setAvatarUploadError('');
+      setProfileDraft((prev) => ({ ...prev, avatarUrl: result }));
+    };
+    reader.onerror = () => {
+      setAvatarUploadError('No se pudo procesar la imagen.');
+    };
+    reader.readAsDataURL(file);
   }
 
   function saveProfileEditor() {
@@ -518,9 +550,22 @@ export function FanScreens({ model }: { model: FidelityModel }) {
             <label>Bio
               <textarea value={profileDraft.bio} onChange={(e) => setProfileDraft((prev) => ({ ...prev, bio: e.target.value }))} rows={3} />
             </label>
-            <label>Avatar URL
-              <input value={profileDraft.avatarUrl} onChange={(e) => setProfileDraft((prev) => ({ ...prev, avatarUrl: e.target.value }))} />
-            </label>
+            <article className="summary-box">
+              <p>Avatar</p>
+              <img className="profile-avatar" src={profileDraft.avatarUrl} alt={`Preview avatar ${profileDraft.displayName || profileDraft.username || 'fan'}`} />
+              <label className="ghost ghost-link">
+                Subir foto (móvil/desktop)
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="user"
+                  onChange={(e) => handleAvatarFileSelected(e.target.files?.[0])}
+                  style={{ display: 'none' }}
+                />
+              </label>
+              <small className="hint">Formatos: JPG, PNG, WEBP. Máximo 5MB.</small>
+              {avatarUploadError ? <small className="error-text">{avatarUploadError}</small> : null}
+            </article>
             <label>Ubicación
               <input value={profileDraft.location} onChange={(e) => setProfileDraft((prev) => ({ ...prev, location: e.target.value }))} />
             </label>
