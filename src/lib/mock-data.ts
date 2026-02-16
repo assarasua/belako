@@ -1,4 +1,4 @@
-import type { Product, Stream } from './types';
+import type { ConcertTicket, Product, Stream } from './types';
 
 const now = new Date();
 const addDays = (base: Date, days: number) => {
@@ -20,7 +20,7 @@ export const streams: Stream[] = [
   {
     id: 's1',
     artist: 'Belako',
-    title: 'Belako Gaua en directo',
+    title: 'Belako apertura en directo',
     startsAt: now.toISOString(),
     viewers: 1821,
     rewardHint: 'Ver directo entero -> desbloquea recompensa',
@@ -169,6 +169,41 @@ export const products: Product[] = [
     fiatPrice: 34.95,
     imageUrl: 'https://www.d2fy.es/cdn/shop/products/sudadera-capucha-belako-negra-fuego-327412_600x.jpg?v=1649337898',
     limited: false
+  }
+];
+
+export const concertTickets: ConcertTicket[] = [
+  {
+    id: 't1',
+    title: 'Belako Live · Sala Santana',
+    venue: 'Sala Santana 27',
+    city: 'Bilbao',
+    startsAt: setTime(addDays(now, 5), 21, 0).toISOString(),
+    priceEur: 24.5
+  },
+  {
+    id: 't2',
+    title: 'Belako Live · Dabadaba',
+    venue: 'Dabadaba',
+    city: 'Donostia',
+    startsAt: setTime(addDays(now, 12), 20, 30).toISOString(),
+    priceEur: 22
+  },
+  {
+    id: 't3',
+    title: 'Belako Live · Zentral',
+    venue: 'Zentral',
+    city: 'Pamplona',
+    startsAt: setTime(addDays(now, 19), 21, 15).toISOString(),
+    priceEur: 23
+  },
+  {
+    id: 't4',
+    title: 'Belako Live · Razzmatazz',
+    venue: 'Razzmatazz',
+    city: 'Barcelona',
+    startsAt: setTime(addDays(now, 26), 21, 0).toISOString(),
+    priceEur: 28
   }
 ];
 

@@ -15,6 +15,15 @@ export type Stream = {
   colorClass: string;
 };
 
+export type ConcertTicket = {
+  id: string;
+  title: string;
+  venue: string;
+  city: string;
+  startsAt: string;
+  priceEur: number;
+};
+
 export type Product = {
   id: string;
   name: string;

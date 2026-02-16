@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { products, streams } from '../../lib/mock-data';
 import type { Address, ProfileSettings, StorePriceSort } from '../../lib/types';
 import type { FidelityModel } from '../../state/use-fidelity-state';
-import { liveBadgeText } from '../../state/use-fidelity-state';
 
 type AddressDraft = {
   label: string;
@@ -42,16 +41,21 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     activeStream,
     attendanceCount,
     spend,
+    registeredStreamIds,
+    joinedLiveCount,
+    concertTicketCount,
+    merchPurchaseCount,
     setFanTab,
     track,
-    liveState,
-    watchFullLive,
+    joinLiveStream,
+    registerStreamReminder,
     claimFullLiveReward,
-    currentStreamFullyWatched,
+    openConcertTicketCheckout,
+    hasConcertTicket,
     fullLiveRewardUnlocked,
     fullLiveRewardClaimed,
+    concertTickets,
     openCheckout,
-    nextStream,
     journeyXp,
     journeyTiers,
     currentJourneyTier,
@@ -90,7 +94,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const [passwordError, setPasswordError] = useState('');
-  const [showFullscreenLive, setShowFullscreenLive] = useState(false);
   const purchaseEntries = useMemo(
     () => purchases.slice(0, 10),
     [purchases]
@@ -233,11 +236,8 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     setProfileEditing(false);
   }
 
-  function openFullscreenLive() {
-    if (!currentStreamFullyWatched) {
-      watchFullLive();
-    }
-    setShowFullscreenLive(true);
+  function isRegisteredForStream(streamId: string) {
+    return registeredStreamIds.includes(streamId);
   }
 
   if (fanTab === 'home') {
@@ -254,16 +254,23 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           <button
             onClick={() => {
               if (isStreamLive(activeStream.startsAt)) {
-                setFanTab('live');
-                track('EVT_stream_join', `Entró al directo de ${activeStream.artist}`);
+                joinLiveStream(activeStream.id);
                 return;
               }
-              track('EVT_stream_register', `Registro al próximo directo de ${activeStream.artist}`);
+              registerStreamReminder(activeStream.id);
             }}
+            className={!isStreamLive(activeStream.startsAt) && isRegisteredForStream(activeStream.id) ? 'ghost' : 'primary'}
+            disabled={!isStreamLive(activeStream.startsAt) && isRegisteredForStream(activeStream.id)}
           >
-            {isStreamLive(activeStream.startsAt) ? 'Unirse' : 'Registrarse'}
+            {isStreamLive(activeStream.startsAt) ? 'Unirse' : isRegisteredForStream(activeStream.id) ? 'Registrado' : 'Registrarse'}
           </button>
-          <small>{isStreamLive(activeStream.startsAt) ? 'Acceso directo al live, sin registro adicional.' : `Empieza: ${formatStreamSchedule(activeStream.startsAt)}`}</small>
+          <small>
+            {isStreamLive(activeStream.startsAt)
+              ? 'Acceso directo al live, sin registro adicional.'
+              : isRegisteredForStream(activeStream.id)
+                ? 'Ya estás registrado para este concierto.'
+                : `Empieza: ${formatStreamSchedule(activeStream.startsAt)}`}
+          </small>
         </article>
 
         {streams.length === 0 ? (
@@ -289,14 +296,15 @@ export function FanScreens({ model }: { model: FidelityModel }) {
                   <button
                     onClick={() => {
                       if (isStreamLive(stream.startsAt)) {
-                        setFanTab('live');
-                        track('EVT_stream_join', `Entró al directo de ${stream.artist}`);
+                        joinLiveStream(stream.id);
                         return;
                       }
-                      track('EVT_stream_register', `Registro al próximo directo de ${stream.artist}`);
+                      registerStreamReminder(stream.id);
                     }}
+                    className={!isStreamLive(stream.startsAt) && isRegisteredForStream(stream.id) ? 'ghost' : 'primary'}
+                    disabled={!isStreamLive(stream.startsAt) && isRegisteredForStream(stream.id)}
                   >
-                    {isStreamLive(stream.startsAt) ? 'Unirse' : 'Registrarse'}
+                    {isStreamLive(stream.startsAt) ? 'Unirse' : isRegisteredForStream(stream.id) ? 'Registrado' : 'Registrarse'}
                   </button>
                 </article>
               ))}
@@ -310,6 +318,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         <article className="metric-card">
           <p>Resumen rapido</p>
           <small>Asistencia {attendanceCount} directos | Gasto €{spend.toFixed(2)}</small>
+          <small>XP: directos vistos {joinedLiveCount} | compras merch {merchPurchaseCount} | entradas {concertTicketCount}</small>
           <small>Compra segura en euros con Stripe.</small>
         </article>
       </section>
@@ -320,68 +329,30 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     return (
       <section className="stack">
         <article className="guide-card">
-          <h3>Live mission</h3>
-          <p>Completa hitos durante el directo y compra merch sin salir del flujo.</p>
+          <h3>Conciertos Belako</h3>
+          <p>Explora próximos conciertos y compra tus entradas desde aquí.</p>
         </article>
 
-        <article className={`live-room ${activeStream.colorClass}`}>
-          <div className="live-top">
-            <p className="badge">{liveBadgeText(liveState)}</p>
-            <span className="token-chip">Asistencia {attendanceCount}/3</span>
-          </div>
-          <h2>{activeStream.artist}</h2>
-          <p>{activeStream.title}</p>
-          {nextScheduledStream ? <small>Siguiente directo: {nextScheduledStream.title} · {formatStreamSchedule(nextScheduledStream.startsAt)}</small> : null}
-
-          <div className="chat-box" aria-live="polite">
-            <p>@ane: este drop es una locura</p>
-            <p>@iker: temazo en directo</p>
-            <p>@june: insignia superfan desbloqueada</p>
-          </div>
-
-          <div className="row">
-            <button className={currentStreamFullyWatched ? 'ghost' : 'primary'} onClick={openFullscreenLive}>
-              {currentStreamFullyWatched ? 'Directo completo verificado' : 'Ver directo entero'}
-            </button>
-          </div>
-          <small>{currentStreamFullyWatched ? 'Recompensa de directo completo desbloqueada.' : 'Ver directo entero para desbloquear recompensa.'}</small>
-          <section className="live-embed" aria-label="Directo embebido de YouTube">
-            <iframe
-              src="https://www.youtube.com/embed/l7TlAz1HvSk?rel=0"
-              title="Belako Live"
-              loading="lazy"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-            />
-          </section>
-          <div className="row sticky-live-actions">
-            <button onClick={() => openCheckout(products[0])}>Comprar merch</button>
+        <article className="metric-card">
+          <p>Próximos conciertos</p>
+          <div className="xp-action-list">
+            {concertTickets.map((ticket) => {
+              const purchased = hasConcertTicket(ticket.id);
+              return (
+                <article key={ticket.id} className="xp-action-item">
+                  <strong>{ticket.title}</strong>
+                  <small>{formatStreamSchedule(ticket.startsAt)} · {ticket.venue} ({ticket.city})</small>
+                  <div className="row actions-row">
+                    <span className="store-badge">€{ticket.priceEur.toFixed(2)}</span>
+                    <button className={purchased ? 'ghost' : 'primary'} onClick={() => openConcertTicketCheckout(ticket.id)} disabled={purchased}>
+                      {purchased ? 'Entrada comprada' : 'Comprar entrada'}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </article>
-
-        {showFullscreenLive ? (
-          <article className="live-fullscreen" role="dialog" aria-modal="true" aria-label="Directo de Belako en pantalla completa">
-            <div className="live-fullscreen-top">
-              <span className="badge">EN DIRECTO</span>
-              <button className="ghost" onClick={() => setShowFullscreenLive(false)}>Cerrar</button>
-            </div>
-            <iframe
-              src="https://www.youtube.com/embed/l7TlAz1HvSk?autoplay=1&rel=0"
-              title="Belako Live Fullscreen"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-            />
-          </article>
-        ) : null}
-
-        {liveState === 'ended' ? (
-          <article className="metric-card">
-            <p>El directo ha terminado.</p>
-            <button onClick={nextStream}>Ir al siguiente directo</button>
-          </article>
-        ) : null}
       </section>
     );
   }
@@ -470,6 +441,27 @@ export function FanScreens({ model }: { model: FidelityModel }) {
                 </article>
               );
             })}
+          </div>
+        </article>
+
+        <article className="metric-card">
+          <p>Cómo ganar experiencia</p>
+          <div className="xp-action-list">
+            <div className="xp-action-item">
+              <strong>Unirte a directos en vivo</strong>
+              <small>+20 XP por cada directo distinto al que te unas.</small>
+              <span className="store-badge">{joinedLiveCount} completados</span>
+            </div>
+            <div className="xp-action-item">
+              <strong>Comprar merchandising</strong>
+              <small>+80 XP por cada compra de merch confirmada.</small>
+              <span className="store-badge">{merchPurchaseCount} compras</span>
+            </div>
+            <div className="xp-action-item">
+              <strong>Comprar billetes para conciertos</strong>
+              <small>+120 XP por cada entrada presencial comprada.</small>
+              <span className="store-badge">{concertTicketCount} entradas</span>
+            </div>
           </div>
         </article>
 

@@ -7,16 +7,16 @@ type Props = {
 
 export function BottomNav({ fanTab, onFanTab }: Props) {
   const items: Array<{ tab: FanTab; label: string; icon: string }> = [
-    { tab: 'live', label: 'directo', icon: 'LV' },
+    { tab: 'live', label: 'conciertos', icon: 'CN' },
     { tab: 'store', label: 'tienda', icon: 'SH' },
-    { tab: 'home', label: 'inicio', icon: 'DS' },
+    { tab: 'home', label: 'inicio', icon: 'Live' },
     { tab: 'rewards', label: 'recompensas', icon: 'RW' },
     { tab: 'profile', label: 'perfil', icon: 'ME' }
   ];
 
   const labels: Record<FanTab, string> = {
     home: 'inicio',
-    live: 'directo',
+    live: 'conciertos',
     store: 'tienda',
     rewards: 'recompensas',
     profile: 'perfil'

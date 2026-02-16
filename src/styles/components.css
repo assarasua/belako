@@ -411,6 +411,20 @@
   box-shadow: 0 0 0 1px rgba(255, 187, 230, 0.4) inset, 0 0 20px rgba(255, 129, 199, 0.18);
 }
 
+.xp-action-list {
+  display: grid;
+  gap: 8px;
+}
+
+.xp-action-item {
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(255, 160, 218, 0.38);
+  background: rgba(18, 25, 39, 0.85);
+  padding: 0.58rem 0.64rem;
+  display: grid;
+  gap: 6px;
+}
+
 .sheet {
   position: sticky;
   bottom: 5.2rem;

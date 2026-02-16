@@ -185,7 +185,8 @@ export function Sheets({ model }: { model: FidelityModel }) {
   }, [cardSetupClientSecret, setCardSetupError, sheet, stripePublishableKey]);
 
   const serviceFee = Number((selectedProduct.fiatPrice * 0.05).toFixed(2));
-  const shipping = selectedProduct.fiatPrice >= 40 ? 0 : 4.9;
+  const isConcertTicketCheckout = selectedProduct.id.startsWith('ticket-');
+  const shipping = isConcertTicketCheckout ? 0 : selectedProduct.fiatPrice >= 40 ? 0 : 4.9;
   const total = Number((selectedProduct.fiatPrice + serviceFee + shipping).toFixed(2));
   const canSubmitCardSetup =
     Boolean(cardSetupClientSecret) &&
@@ -299,7 +300,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
           />
         )}
 
-        <p>Pago exclusivo en euros con tarjeta.</p>
+        <p>{isConcertTicketCheckout ? 'Compra de entrada en euros con tarjeta.' : 'Pago exclusivo en euros con tarjeta.'}</p>
         <small className="checkout-trust">Pago seguro procesado por Stripe. Datos cifrados de extremo a extremo.</small>
 
         <div className="sheet-grid">
@@ -380,7 +381,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
         <div className="summary-box">
           <p>Precio base: €{selectedProduct.fiatPrice.toFixed(2)}</p>
           <p>Fee plataforma (5%): €{serviceFee.toFixed(2)}</p>
-          <p>Envio: {shipping === 0 ? 'Gratis' : `€${shipping.toFixed(2)}`}</p>
+          <p>{isConcertTicketCheckout ? 'Gestión entrada: gratis' : `Envio: ${shipping === 0 ? 'Gratis' : `€${shipping.toFixed(2)}`}`}</p>
           <p><strong>Total tarjeta: €{total.toFixed(2)}</strong></p>
         </div>
 

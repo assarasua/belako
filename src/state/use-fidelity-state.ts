@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { products, streams, nowLabel } from '../lib/mock-data';
+import { concertTickets, products, streams, nowLabel } from '../lib/mock-data';
 import type {
   Address,
   BillingProfile,
@@ -61,8 +61,10 @@ const defaultCheckoutForm: CheckoutForm = {
 };
 
 const xpPolicy = {
+  liveJoin: 20,
   fullLive: 50,
-  purchase: 80
+  purchase: 80,
+  inPersonTicket: 120
 };
 const JOURNEY_THRESHOLDS = {
   fan: 0,
@@ -220,6 +222,9 @@ export function useFidelityState() {
   const [spend, setSpend] = useState(26.95);
   const [selectedProduct, setSelectedProduct] = useState<Product>(products[0]);
   const [fullyWatchedStreamIds, setFullyWatchedStreamIds] = useState<string[]>([]);
+  const [registeredStreamIds, setRegisteredStreamIds] = useState<string[]>([]);
+  const [joinedLiveStreamIds, setJoinedLiveStreamIds] = useState<string[]>([]);
+  const [purchasedConcertTicketIds, setPurchasedConcertTicketIds] = useState<string[]>([]);
   const [fullLiveRewardClaimed, setFullLiveRewardClaimed] = useState(false);
   const [statusText, setStatusText] = useState('');
 
@@ -537,6 +542,9 @@ export function useFidelityState() {
 
   const currentStreamFullyWatched = fullyWatchedStreamIds.includes(activeStream.id);
   const fullLiveRewardUnlocked = fullyWatchedStreamIds.length > 0;
+  const joinedLiveCount = joinedLiveStreamIds.length;
+  const concertTicketCount = purchasedConcertTicketIds.length;
+  const merchPurchaseCount = purchases.filter((purchase) => !purchase.label.startsWith('Entrada concierto ·')).length;
 
   const profileSummary = useMemo(() => {
     const defaultShipping = addresses.find((item) => item.isDefaultShipping);
@@ -601,6 +609,65 @@ export function useFidelityState() {
     setSheet('none');
   }
 
+  function registerStreamReminder(streamId: string) {
+    const stream = streams.find((item) => item.id === streamId);
+    if (!stream) {
+      return;
+    }
+    if (!registeredStreamIds.includes(streamId)) {
+      setRegisteredStreamIds((prev) => [...prev, streamId]);
+    }
+    setStatusText(`Te avisaremos cuando empiece "${stream.title}".`);
+    track('EVT_stream_register', `Registro al próximo directo de ${stream.artist}`);
+  }
+
+  function openConcertTicketCheckout(ticketId: string) {
+    const ticket = concertTickets.find((item) => item.id === ticketId);
+    if (!ticket) {
+      setStatusText('La entrada seleccionada no está disponible.');
+      return;
+    }
+
+    if (purchasedConcertTicketIds.includes(ticketId)) {
+      setStatusText('Ya tienes esta entrada en tu perfil.');
+      return;
+    }
+
+    const ticketProduct: Product = {
+      id: `ticket-${ticket.id}`,
+      name: `Entrada concierto · ${ticket.title}`,
+      fiatPrice: ticket.priceEur,
+      imageUrl: 'https://www.belakoband.com/cdn/shop/files/Belako_Banda.jpg?v=1753809570',
+      limited: false
+    };
+
+    openCheckout(ticketProduct);
+    track('EVT_ticket_checkout_started', `Checkout abierto para entrada ${ticket.title}`);
+  }
+
+  function joinLiveStream(streamId: string) {
+    const nextIndex = streams.findIndex((stream) => stream.id === streamId);
+    if (nextIndex < 0) {
+      setStatusText('No se ha encontrado el directo.');
+      return;
+    }
+
+    setStreamIndex(nextIndex);
+    setLiveState('live');
+    setSheet('none');
+
+    const stream = streams[nextIndex];
+    track('EVT_stream_join', `Entró al directo de ${stream.artist}`);
+
+    if (joinedLiveStreamIds.includes(streamId)) {
+      return;
+    }
+
+    setJoinedLiveStreamIds((prev) => [...prev, streamId]);
+    addXp(xpPolicy.liveJoin, `Unirse a directo: ${stream.title}`);
+    notify('XP ganada', `+${xpPolicy.liveJoin} XP por unirte al directo.`);
+  }
+
   function watchFullLive() {
     if (currentStreamFullyWatched) {
       setStatusText('Ya has completado este directo.');
@@ -628,6 +695,10 @@ export function useFidelityState() {
     setStatusText('Recompensa reclamada.');
     track('EVT_full_live_reward_claimed', 'Recompensa de directo completo reclamada');
     notify('Recompensa reclamada', 'Has reclamado tu recompensa por ver el directo entero.');
+  }
+
+  function hasConcertTicket(ticketId: string): boolean {
+    return purchasedConcertTicketIds.includes(ticketId);
   }
 
   function updateProfileField<K extends keyof ProfileSettings>(field: K, value: ProfileSettings[K]) {
@@ -968,8 +1039,12 @@ export function useFidelityState() {
   function onPurchaseSuccess(
     productName: string,
     amountPaid: number,
-    stripeRef?: { sessionId?: string; paymentIntentId?: string }
+    stripeRef?: { sessionId?: string; paymentIntentId?: string },
+    checkoutRef?: { productId?: string }
   ) {
+    const productId = checkoutRef?.productId || selectedProduct.id;
+    const isConcertTicket = productId.startsWith('ticket-');
+    const ticketId = isConcertTicket ? productId.replace('ticket-', '') : '';
     const purchaseId = `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const purchaseAt = nowLabel();
 
@@ -989,13 +1064,28 @@ export function useFidelityState() {
       ...prev
     ]);
     setLastCompletedPurchaseId(purchaseId);
-    addXp(xpPolicy.purchase, `Compra ${productName}`);
+    if (isConcertTicket) {
+      if (ticketId && !purchasedConcertTicketIds.includes(ticketId)) {
+        setPurchasedConcertTicketIds((prev) => [...prev, ticketId]);
+      }
+      addXp(xpPolicy.inPersonTicket, `Entrada presencial: ${productName}`);
+    } else {
+      addXp(xpPolicy.purchase, `Compra ${productName}`);
+    }
     setSheet('none');
     setFanTab('profile');
     setCheckoutProcessing(false);
     setStatusText(`Pago confirmado: ${productName}.`);
-    track('EVT_merch_purchase_success', `Compra en EUR completada para ${productName}`);
-    notify('Compra completada', `${productName} confirmado. Revisa tu email para seguimiento.`);
+    track(
+      isConcertTicket ? 'EVT_in_person_ticket_purchase' : 'EVT_merch_purchase_success',
+      isConcertTicket ? `Compra entrada ${productName}` : `Compra en EUR completada para ${productName}`
+    );
+    notify(
+      'Compra completada',
+      isConcertTicket
+        ? `${productName} confirmada. +${xpPolicy.inPersonTicket} XP por entrada presencial.`
+        : `${productName} confirmado. Revisa tu email para seguimiento.`
+    );
     pushHistory({ label: `Compra ${productName} (€${amountPaid.toFixed(2)})`, type: 'purchase' });
 
     if (stripeRef?.sessionId || stripeRef?.paymentIntentId) {
@@ -1014,8 +1104,9 @@ export function useFidelityState() {
     setCheckoutProcessing(true);
     setCheckoutError('');
 
+    const isConcertTicket = selectedProduct.id.startsWith('ticket-');
     const serviceFee = Number((selectedProduct.fiatPrice * 0.05).toFixed(2));
-    const shipping = selectedProduct.fiatPrice >= 40 ? 0 : 4.9;
+    const shipping = isConcertTicket ? 0 : selectedProduct.fiatPrice >= 40 ? 0 : 4.9;
     const total = Number((selectedProduct.fiatPrice + serviceFee + shipping).toFixed(2));
 
     const response = await createStripeCheckoutSession({
@@ -1082,10 +1173,11 @@ export function useFidelityState() {
 
     if (checkoutState === 'success') {
       const productName = params.get('productName') || 'Merch Belako';
+      const productId = params.get('productId') || selectedProduct.id;
       const total = Number(params.get('total'));
       const amountPaid = Number.isFinite(total) && total > 0 ? total : selectedProduct.fiatPrice;
       const sessionId = params.get('session_id') || undefined;
-      onPurchaseSuccess(productName, amountPaid, { sessionId });
+      onPurchaseSuccess(productName, amountPaid, { sessionId }, { productId });
       window.history.replaceState({}, '', window.location.pathname);
       return;
     }
@@ -1115,9 +1207,14 @@ export function useFidelityState() {
     sheet,
     attendanceCount,
     spend,
+    registeredStreamIds,
+    joinedLiveCount,
+    concertTicketCount,
+    merchPurchaseCount,
     currentStreamFullyWatched,
     fullLiveRewardUnlocked,
     fullLiveRewardClaimed,
+    concertTickets,
     selectedProduct,
     journeyXp,
     journeyTiers,
@@ -1156,7 +1253,11 @@ export function useFidelityState() {
     completeOnboardingStep,
     finishOnboardingForCurrentUser,
     watchFullLive,
+    joinLiveStream,
+    registerStreamReminder,
+    openConcertTicketCheckout,
     claimFullLiveReward,
+    hasConcertTicket,
     openCheckout,
     updateCheckoutField,
     payWithFiat,
