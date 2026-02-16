@@ -102,6 +102,24 @@ export function FanScreens({ model }: { model: FidelityModel }) {
 
   const homeSentinelRef = useRef<HTMLDivElement | null>(null);
 
+  function isStreamLive(streamStart: string) {
+    const start = new Date(streamStart).getTime();
+    const nowTs = Date.now();
+    const liveWindowMs = 1000 * 60 * 120;
+    return nowTs >= start && nowTs < start + liveWindowMs;
+  }
+
+  function formatStreamSchedule(streamStart: string) {
+    const start = new Date(streamStart);
+    return start.toLocaleString('es-ES', {
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
   const sortedStoreProducts = useMemo(() => {
     const enriched = products.map((product) => ({
       product,
@@ -192,17 +210,21 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           <h3>{activeStream.title}</h3>
           <p>{activeStream.rewardHint}</p>
           {nextScheduledStream ? (
-            <small>Siguiente directo: {nextScheduledStream.title} · {nextScheduledStream.nextLiveAt}</small>
+            <small>Siguiente directo: {nextScheduledStream.title} · {formatStreamSchedule(nextScheduledStream.startsAt)}</small>
           ) : null}
           <button
             onClick={() => {
-              setFanTab('live');
-              track('EVT_stream_join', `Entró al directo de ${activeStream.artist}`);
+              if (isStreamLive(activeStream.startsAt)) {
+                setFanTab('live');
+                track('EVT_stream_join', `Entró al directo de ${activeStream.artist}`);
+                return;
+              }
+              track('EVT_stream_register', `Registro al próximo directo de ${activeStream.artist}`);
             }}
           >
-            Ver directo ahora
+            {isStreamLive(activeStream.startsAt) ? 'Unir al directo' : 'Registrarse'}
           </button>
-          <small>Acceso directo al live, sin registro adicional.</small>
+          <small>{isStreamLive(activeStream.startsAt) ? 'Acceso directo al live, sin registro adicional.' : `Empieza: ${formatStreamSchedule(activeStream.startsAt)}`}</small>
         </article>
 
         {streams.length === 0 ? (
@@ -217,20 +239,25 @@ export function FanScreens({ model }: { model: FidelityModel }) {
               {homeFeedStreams.map(({ stream, virtualId }) => (
                 <article key={virtualId} className={`stream-card ${stream.colorClass} live-pulse`}>
                   <div className="live-top">
-                    <p className="badge">EN DIRECTO</p>
+                    <p className="badge">{isStreamLive(stream.startsAt) ? 'EN DIRECTO' : 'PRÓXIMO'}</p>
                     <span className="token-chip">{stream.viewers} viendo</span>
                   </div>
                   <h3>{stream.artist}</h3>
                   <p>{stream.title}</p>
                   <small>{stream.genre}</small>
+                  <small>Horario: {formatStreamSchedule(stream.startsAt)}</small>
                   <p className="hint">{stream.rewardHint}</p>
                   <button
                     onClick={() => {
-                      setFanTab('live');
-                      track('EVT_stream_join', `Entró al directo de ${stream.artist}`);
+                      if (isStreamLive(stream.startsAt)) {
+                        setFanTab('live');
+                        track('EVT_stream_join', `Entró al directo de ${stream.artist}`);
+                        return;
+                      }
+                      track('EVT_stream_register', `Registro al próximo directo de ${stream.artist}`);
                     }}
                   >
-                    Entrar al live
+                    {isStreamLive(stream.startsAt) ? 'Unir al directo' : 'Registrarse'}
                   </button>
                 </article>
               ))}
@@ -265,7 +292,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           </div>
           <h2>{activeStream.artist}</h2>
           <p>{activeStream.title}</p>
-          {nextScheduledStream ? <small>Siguiente directo: {nextScheduledStream.title} · {nextScheduledStream.nextLiveAt}</small> : null}
+          {nextScheduledStream ? <small>Siguiente directo: {nextScheduledStream.title} · {formatStreamSchedule(nextScheduledStream.startsAt)}</small> : null}
 
           <div className="chat-box" aria-live="polite">
             <p>@ane: este drop es una locura</p>

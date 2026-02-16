@@ -8,7 +8,7 @@ export type Stream = {
   id: string;
   artist: string;
   title: string;
-  nextLiveAt: string;
+  startsAt: string;
   viewers: number;
   rewardHint: string;
   genre: string;

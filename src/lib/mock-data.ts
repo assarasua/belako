@@ -1,11 +1,27 @@
 import type { Product, Stream } from './types';
 
+const now = new Date();
+const addDays = (base: Date, days: number) => {
+  const next = new Date(base);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const setTime = (base: Date, hours: number, minutes: number) => {
+  const next = new Date(base);
+  next.setHours(hours, minutes, 0, 0);
+  return next;
+};
+
+const todayHours = now.getHours();
+const todayMinutes = now.getMinutes();
+
 export const streams: Stream[] = [
   {
     id: 's1',
     artist: 'Belako',
     title: 'Belako Gaua en directo',
-    nextLiveAt: 'Viernes 22:00',
+    startsAt: now.toISOString(),
     viewers: 1821,
     rewardHint: 'Ver directo entero -> desbloquea recompensa',
     genre: 'Post-punk',
@@ -15,7 +31,7 @@ export const streams: Stream[] = [
     id: 's2',
     artist: 'Belako',
     title: 'Ensayo abierto acústico',
-    nextLiveAt: 'Sábado 20:30',
+    startsAt: setTime(addDays(now, 7), 20, 30).toISOString(),
     viewers: 954,
     rewardHint: 'Mira completo para boost de fidelidad',
     genre: 'Indie rock',
@@ -25,7 +41,7 @@ export const streams: Stream[] = [
     id: 's3',
     artist: 'Belako',
     title: 'Drop exclusivo de merch firmado',
-    nextLiveAt: 'Domingo 21:00',
+    startsAt: setTime(addDays(now, 14), 21, 0).toISOString(),
     viewers: 2410,
     rewardHint: 'Nivel 1 se desbloquea con 3 asistencias',
     genre: 'Rock alternativo',
@@ -35,7 +51,7 @@ export const streams: Stream[] = [
     id: 's4',
     artist: 'Belako',
     title: 'Session nocturna: post-punk set',
-    nextLiveAt: 'Martes 22:15',
+    startsAt: setTime(addDays(now, 21), 22, 15).toISOString(),
     viewers: 1660,
     rewardHint: 'Completa el directo para subir de nivel fan',
     genre: 'Post-punk',
@@ -45,7 +61,7 @@ export const streams: Stream[] = [
     id: 's5',
     artist: 'Belako',
     title: 'Backstage stories + Q&A',
-    nextLiveAt: 'Miércoles 20:00',
+    startsAt: setTime(addDays(now, 28), 20, 0).toISOString(),
     viewers: 1130,
     rewardHint: 'Interactúa en chat para ganar presencia',
     genre: 'Alternative',
@@ -55,7 +71,7 @@ export const streams: Stream[] = [
     id: 's6',
     artist: 'Belako',
     title: 'Belako en vivo: set completo',
-    nextLiveAt: 'Jueves 21:30',
+    startsAt: setTime(addDays(now, 35), 21, 30).toISOString(),
     viewers: 2795,
     rewardHint: 'Directo largo para acelerar progreso',
     genre: 'Live set',
@@ -65,7 +81,7 @@ export const streams: Stream[] = [
     id: 's7',
     artist: 'Belako',
     title: 'Pre-show de gira: warm-up',
-    nextLiveAt: 'Viernes 19:45',
+    startsAt: setTime(addDays(now, 42), 19, 45).toISOString(),
     viewers: 1422,
     rewardHint: 'Asiste hoy y desbloquea hitos antes',
     genre: 'Indie rock',
@@ -75,7 +91,7 @@ export const streams: Stream[] = [
     id: 's8',
     artist: 'Belako',
     title: 'Aftershow íntimo para superfans',
-    nextLiveAt: 'Sábado 23:00',
+    startsAt: setTime(addDays(now, 49), todayHours, todayMinutes).toISOString(),
     viewers: 890,
     rewardHint: 'Más directos vistos -> más BEL y tiers',
     genre: 'Acoustic',
