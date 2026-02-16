@@ -329,12 +329,52 @@ small,
   gap: 0.5rem;
 }
 
+.store-filter-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.store-filter-row button {
+  min-height: 2.3rem;
+  font-size: 0.76rem;
+}
+
 .product-card {
   display: grid;
+  gap: 0.28rem;
   text-align: left;
   background: rgba(28, 37, 56, 0.95);
   color: #f7f5ff;
   border: 1px solid #3a4a68;
+}
+
+.store-badges {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.store-badge {
+  border-radius: 999px;
+  border: 1px solid #5870a0;
+  background: rgba(143, 197, 255, 0.14);
+  color: #d8ebff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.16rem 0.42rem;
+}
+
+.store-badge-reward {
+  border-color: rgba(255, 172, 223, 0.55);
+  background: rgba(255, 172, 223, 0.15);
+  color: #ffe3f4;
+}
+
+.product-actions {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
 }
 
 .nft-grid {
@@ -497,6 +537,10 @@ small,
   z-index: 20;
 }
 
+.checkout-sheet {
+  gap: 0.65rem;
+}
+
 .feedback {
   border: 1px solid #ff8ed0;
   color: #ffe3f4;
@@ -519,9 +563,10 @@ small,
 input {
   border-radius: 10px;
   border: 1px solid #4b5b7b;
-  padding: 0.5rem;
+  padding: 0.66rem 0.62rem;
   color: #f6f2ff;
   background: rgba(26, 35, 54, 0.95);
+  min-height: 2.7rem;
 }
 
 .sheet-grid {
@@ -539,9 +584,9 @@ input {
 .summary-box {
   border: 1px solid #4d5f84;
   border-radius: 10px;
-  padding: 0.5rem 0.6rem;
+  padding: 0.6rem 0.7rem;
   display: grid;
-  gap: 0.2rem;
+  gap: 0.26rem;
   background: rgba(21, 29, 45, 0.62);
 }
 
@@ -582,6 +627,38 @@ details p {
   margin-top: 0.35rem;
   font-size: 0.82rem;
   color: #dadbea;
+}
+
+.checkout-actions {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  gap: 0.45rem;
+  padding-top: 0.35rem;
+  background: linear-gradient(180deg, rgba(24, 31, 49, 0), rgba(24, 31, 49, 0.9) 28%, rgba(24, 31, 49, 1));
+}
+
+.checkout-actions button {
+  min-height: 2.9rem;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 420px) {
+  .sheet {
+    bottom: calc(5.35rem + env(safe-area-inset-bottom));
+  }
+
+  .checkout-row {
+    grid-template-columns: 1fr;
+  }
+
+  .store-filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sheet-grid label {
+    font-size: 0.88rem;
+  }
 }
 
 h1 {

@@ -1,7 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { officialBelakoNftAssets, products, streams, nowLabel } from '../lib/mock-data';
 import type {
-  ArtistTab,
   EventItem,
   FanTab,
   LiveState,
@@ -10,11 +9,10 @@ import type {
   OwnedNft,
   Product,
   RewardHistoryItem,
-  Role,
   SheetState,
   Tier
 } from '../lib/types';
-import { fakeApi } from '../services/api-client';
+import { createStripeCheckoutSession } from '../services/api-client';
 
 export type FidelityModel = ReturnType<typeof useFidelityState>;
 
@@ -28,6 +26,8 @@ type CheckoutForm = {
   acceptedPolicy: boolean;
 };
 
+type CheckoutMode = 'fiat' | 'coin';
+
 const defaultCheckoutForm: CheckoutForm = {
   fullName: '',
   email: '',
@@ -39,9 +39,7 @@ const defaultCheckoutForm: CheckoutForm = {
 };
 
 export function useFidelityState() {
-  const [role, setRole] = useState<Role>('fan');
   const [fanTab, setFanTab] = useState<FanTab>('home');
-  const [artistTab, setArtistTab] = useState<ArtistTab>('dashboard');
 
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingDone, setOnboardingDone] = useState(false);
@@ -62,13 +60,7 @@ export function useFidelityState() {
   const [checkoutError, setCheckoutError] = useState('');
   const [checkoutProcessing, setCheckoutProcessing] = useState(false);
   const [checkoutUseCoinDiscount, setCheckoutUseCoinDiscount] = useState(false);
-
-  const [artistOnboardingDone, setArtistOnboardingDone] = useState(false);
-  const [artistSocialConnected, setArtistSocialConnected] = useState(false);
-  const [artistStreamTitle, setArtistStreamTitle] = useState('Belako Night #1');
-  const [artistPinnedItem, setArtistPinnedItem] = useState('Pua firmada Belako');
-  const [artistLive, setArtistLive] = useState(false);
-  const [artistModerationOpen, setArtistModerationOpen] = useState(false);
+  const [checkoutMode, setCheckoutMode] = useState<CheckoutMode>('fiat');
 
   const [events, setEvents] = useState<EventItem[]>([
     { code: 'EVT_app_open', message: 'App abierta en modo fans', at: nowLabel() }
@@ -82,6 +74,7 @@ export function useFidelityState() {
       at: nowLabel()
     }
   ]);
+  const notificationTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const [rewardHistory, setRewardHistory] = useState<RewardHistoryItem[]>([]);
   const [ownedNfts, setOwnedNfts] = useState<OwnedNft[]>([]);
@@ -107,6 +100,33 @@ export function useFidelityState() {
   function notify(title: string, message: string) {
     setNotifications((prev) => [{ id: `n-${Date.now()}-${Math.random()}`, title, message, at: nowLabel() }, ...prev].slice(0, 12));
   }
+
+  useEffect(() => {
+    notifications.forEach((notification) => {
+      if (notificationTimeouts.current[notification.id]) {
+        return;
+      }
+      notificationTimeouts.current[notification.id] = setTimeout(() => {
+        setNotifications((prev) => prev.filter((item) => item.id !== notification.id));
+        delete notificationTimeouts.current[notification.id];
+      }, 5000);
+    });
+  }, [notifications]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(notificationTimeouts.current).forEach((timer) => clearTimeout(timer));
+      notificationTimeouts.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!statusText) {
+      return;
+    }
+    const timer = setTimeout(() => setStatusText(''), 5000);
+    return () => clearTimeout(timer);
+  }, [statusText]);
 
   function pushHistory(item: Omit<RewardHistoryItem, 'id' | 'at'>) {
     setRewardHistory((prev) => [{ id: `h-${Date.now()}-${Math.random()}`, at: nowLabel(), ...item }, ...prev].slice(0, 20));
@@ -163,14 +183,6 @@ export function useFidelityState() {
 
   const canUseCoinDiscount = belakoCoins >= coinPolicy.discountCost;
 
-  async function switchRole(nextRole: Role) {
-    setRole(nextRole);
-    track('EVT_role_switched', `Rol cambiado a ${nextRole}`);
-    setStatusText('');
-    setSheet('none');
-    await fakeApi({ ok: true });
-  }
-
   function completeOnboarding() {
     const next = onboardingStep + 1;
     if (next >= 3) {
@@ -199,12 +211,13 @@ export function useFidelityState() {
     track('EVT_bid_placed', `Puja subida a €${nextBid}`);
   }
 
-  function openCheckout(product: Product) {
+  function openCheckout(product: Product, mode: CheckoutMode = 'fiat') {
     setSelectedProduct(product);
     setSheet('checkout');
+    setCheckoutMode(mode);
     setCheckoutError('');
-    setCheckoutUseCoinDiscount(false);
-    track('EVT_merch_checkout_started', `Checkout abierto para ${product.name}`);
+    setCheckoutUseCoinDiscount(mode === 'fiat' ? false : false);
+    track('EVT_merch_checkout_started', `${mode === 'coin' ? 'Canje' : 'Checkout'} abierto para ${product.name}`);
   }
 
   function updateCheckoutField<K extends keyof CheckoutForm>(field: K, value: CheckoutForm[K]) {
@@ -250,6 +263,24 @@ export function useFidelityState() {
       return;
     }
 
+    if (checkoutMode === 'coin') {
+      if (belakoCoins < selectedProduct.belakoCoinCost) {
+        setCheckoutError(`Saldo BEL insuficiente. Necesitas ${selectedProduct.belakoCoinCost} BEL.`);
+        setCheckoutProcessing(false);
+        return;
+      }
+
+      setBelakoCoins((n) => n - selectedProduct.belakoCoinCost);
+      setSheet('none');
+      setCheckoutProcessing(false);
+      setCheckoutUseCoinDiscount(false);
+      setStatusText(`Canje confirmado: ${selectedProduct.name}.`);
+      track('EVT_reward_redeemed', `Canje en BEL completado para ${selectedProduct.name}`);
+      notify('Canje completado', `${selectedProduct.name} añadido a tus pedidos.`);
+      pushHistory({ label: `Canje ${selectedProduct.name} (${selectedProduct.belakoCoinCost} BEL)`, type: 'reward' });
+      return;
+    }
+
     if (checkoutUseCoinDiscount && !canUseCoinDiscount) {
       setCheckoutError('Saldo BEL insuficiente para aplicar descuento.');
       return;
@@ -258,29 +289,27 @@ export function useFidelityState() {
     setCheckoutProcessing(true);
     setCheckoutError('');
 
-    const response = await fakeApi({ ok: true }, 650);
+    const serviceFee = Number((selectedProduct.fiatPrice * 0.05).toFixed(2));
+    const shipping = selectedProduct.fiatPrice >= 40 ? 0 : 4.9;
+    const discount = checkoutUseCoinDiscount ? coinPolicy.discountValueEur : 0;
+    const total = Number((selectedProduct.fiatPrice + serviceFee + shipping - discount).toFixed(2));
 
-    if (!response.ok) {
+    const response = await createStripeCheckoutSession({
+      productId: selectedProduct.id,
+      productName: selectedProduct.name,
+      customerEmail: checkoutForm.email,
+      totalAmountEur: total,
+      useCoinDiscount: checkoutUseCoinDiscount
+    });
+
+    if (!response.ok || !response.data?.url) {
       setCheckoutProcessing(false);
-      setCheckoutError('Error de pago. Intenta de nuevo.');
+      setCheckoutError(response.error || 'Error de pago. Intenta de nuevo.');
       notify('Error de pago', 'No se pudo completar tu compra.');
       return;
     }
 
-    const discount = checkoutUseCoinDiscount ? coinPolicy.discountValueEur : 0;
-    const finalPaid = Math.max(0, selectedProduct.fiatPrice - discount);
-
-    setSpend((n) => n + finalPaid);
-    setBelakoCoins((n) => n + coinPolicy.purchaseReward - (checkoutUseCoinDiscount ? coinPolicy.discountCost : 0));
-    setSheet('none');
-    setCheckoutProcessing(false);
-    setCheckoutUseCoinDiscount(false);
-
-    setStatusText(`Pedido confirmado: ${selectedProduct.name}. +${coinPolicy.purchaseReward} BEL.`);
-    track('EVT_merch_purchase_success', `Compra en EUR completada para ${selectedProduct.name}`);
-    notify('Compra completada', `${selectedProduct.name} confirmado. Revisa tu email para seguimiento.`);
-    pushHistory({ label: `Compra ${selectedProduct.name} (€${finalPaid.toFixed(2)})`, type: 'purchase' });
-    pushHistory({ label: `+${coinPolicy.purchaseReward} BEL por compra`, type: 'coin' });
+    window.location.assign(response.data.url);
   }
 
   function claimTierReward(tier: Tier) {
@@ -347,37 +376,46 @@ export function useFidelityState() {
   }
 
   function clearNotifications() {
+    Object.values(notificationTimeouts.current).forEach((timer) => clearTimeout(timer));
+    notificationTimeouts.current = {};
     setNotifications([]);
   }
 
-  function startArtistOnboarding() {
-    setArtistSocialConnected(true);
-    setStatusText('TikTok e Instagram conectados (mock).');
-    track('EVT_artist_social_connected', 'Equipo conectó redes sociales');
-  }
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkoutState = params.get('checkout');
 
-  function completeArtistOnboarding() {
-    setArtistOnboardingDone(true);
-    setStatusText('Onboarding del equipo completado. Ya puedes emitir.');
-    track('EVT_artist_onboarding_complete', 'Setup del equipo completado');
-  }
+    if (checkoutState === 'success') {
+      const productName = params.get('productName') || 'Merch Belako';
+      const total = Number(params.get('total'));
+      const usedCoinDiscount = params.get('coinDiscount') === '1';
+      const amountPaid = Number.isFinite(total) && total > 0 ? total : selectedProduct.fiatPrice;
 
-  function toggleArtistLive() {
-    const next = !artistLive;
-    setArtistLive(next);
-    if (next) {
-      track('EVT_artist_stream_started', `Belako inició directo ${artistStreamTitle}`);
-      setStatusText('Directo iniciado. Pin de producto y moderacion disponibles.');
+      setSpend((n) => n + amountPaid);
+      setBelakoCoins((n) => n + coinPolicy.purchaseReward - (usedCoinDiscount ? coinPolicy.discountCost : 0));
+      setSheet('none');
+      setCheckoutProcessing(false);
+      setCheckoutUseCoinDiscount(false);
+      setStatusText(`Pago confirmado: ${productName}. +${coinPolicy.purchaseReward} BEL.`);
+      track('EVT_merch_purchase_success', `Compra en EUR completada para ${productName}`);
+      notify('Compra completada', `${productName} confirmado. Revisa tu email para seguimiento.`);
+      pushHistory({ label: `Compra ${productName} (€${amountPaid.toFixed(2)})`, type: 'purchase' });
+      pushHistory({ label: `+${coinPolicy.purchaseReward} BEL por compra`, type: 'coin' });
+      window.history.replaceState({}, '', window.location.pathname);
       return;
     }
-    track('EVT_artist_stream_stopped', 'Belako finalizó directo');
-    setStatusText('Directo finalizado. Metricas actualizadas.');
-  }
+
+    if (checkoutState === 'cancel') {
+      setCheckoutProcessing(false);
+      setCheckoutError('Pago cancelado. Puedes volver a intentarlo.');
+      setStatusText('Pago cancelado.');
+      track('EVT_merch_purchase_canceled', 'Checkout cancelado en Stripe');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [coinPolicy.discountCost, coinPolicy.purchaseReward, selectedProduct.fiatPrice]);
 
   return {
-    role,
     fanTab,
-    artistTab,
     onboardingStep,
     onboardingDone,
     streamIndex,
@@ -395,14 +433,9 @@ export function useFidelityState() {
     checkoutError,
     checkoutProcessing,
     checkoutUseCoinDiscount,
+    checkoutMode,
     canUseCoinDiscount,
     coinPolicy,
-    artistOnboardingDone,
-    artistSocialConnected,
-    artistStreamTitle,
-    artistPinnedItem,
-    artistLive,
-    artistModerationOpen,
     events,
     notifications,
     rewardHistory,
@@ -413,14 +446,9 @@ export function useFidelityState() {
     tiers,
     conversion,
     setFanTab,
-    setArtistTab,
     setOnboardingDone,
     setSheet,
-    setArtistModerationOpen,
-    setArtistStreamTitle,
-    setArtistPinnedItem,
     markNftImageError,
-    switchRole,
     completeOnboarding,
     watchMinute,
     placeBid,
@@ -433,9 +461,6 @@ export function useFidelityState() {
     toggleReconnectState,
     endStream,
     clearNotifications,
-    startArtistOnboarding,
-    completeArtistOnboarding,
-    toggleArtistLive,
     track
   };
 }

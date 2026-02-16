@@ -13,6 +13,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
     checkoutError,
     checkoutProcessing,
     checkoutUseCoinDiscount,
+    checkoutMode,
     toggleCoinDiscount,
     canUseCoinDiscount,
     coinPolicy,
@@ -27,6 +28,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
   const shipping = selectedProduct.fiatPrice >= 40 ? 0 : 4.9;
   const discount = checkoutUseCoinDiscount ? coinPolicy.discountValueEur : 0;
   const total = Number((selectedProduct.fiatPrice + serviceFee + shipping - discount).toFixed(2));
+  const canRedeemWithCoins = model.belakoCoins >= selectedProduct.belakoCoinCost;
 
   if (sheet === 'none') {
     return null;
@@ -50,52 +52,92 @@ export function Sheets({ model }: { model: FidelityModel }) {
 
   if (sheet === 'checkout') {
     return (
-      <section className="sheet" role="dialog" aria-label="Checkout">
-        <h3>Checkout Belako</h3>
+      <section className="sheet checkout-sheet" role="dialog" aria-label="Checkout">
+        <h3>{checkoutMode === 'coin' ? 'Canje de recompensa' : 'Checkout Belako'}</h3>
         <p>{selectedProduct.name}</p>
-        <p>Pago exclusivo en euros con tarjeta.</p>
+        <p>{checkoutMode === 'coin' ? 'Canjea este item usando Belako Coin.' : 'Pago exclusivo en euros con tarjeta.'}</p>
 
         <div className="sheet-grid">
           <label>
             Nombre y apellidos
-            <input value={checkoutForm.fullName} onChange={(e) => updateCheckoutField('fullName', e.target.value)} />
+            <input
+              value={checkoutForm.fullName}
+              autoComplete="name"
+              onChange={(e) => updateCheckoutField('fullName', e.target.value)}
+            />
           </label>
           <label>
             Email
-            <input type="email" value={checkoutForm.email} onChange={(e) => updateCheckoutField('email', e.target.value)} />
+            <input
+              type="email"
+              value={checkoutForm.email}
+              autoComplete="email"
+              onChange={(e) => updateCheckoutField('email', e.target.value)}
+            />
           </label>
           <label>
             Direccion
-            <input value={checkoutForm.address} onChange={(e) => updateCheckoutField('address', e.target.value)} />
+            <input
+              value={checkoutForm.address}
+              autoComplete="street-address"
+              onChange={(e) => updateCheckoutField('address', e.target.value)}
+            />
           </label>
-          <div className="row">
+          <div className="row checkout-row">
             <label>
               Ciudad
-              <input value={checkoutForm.city} onChange={(e) => updateCheckoutField('city', e.target.value)} />
+              <input
+                value={checkoutForm.city}
+                autoComplete="address-level2"
+                onChange={(e) => updateCheckoutField('city', e.target.value)}
+              />
             </label>
             <label>
               CP
-              <input value={checkoutForm.postalCode} onChange={(e) => updateCheckoutField('postalCode', e.target.value)} />
+              <input
+                value={checkoutForm.postalCode}
+                autoComplete="postal-code"
+                inputMode="numeric"
+                onChange={(e) => updateCheckoutField('postalCode', e.target.value)}
+              />
             </label>
           </div>
           <label>
             Pais
-            <input value={checkoutForm.country} onChange={(e) => updateCheckoutField('country', e.target.value)} />
+            <input
+              value={checkoutForm.country}
+              autoComplete="country-name"
+              onChange={(e) => updateCheckoutField('country', e.target.value)}
+            />
           </label>
         </div>
 
-        <div className="summary-box">
-          <p>Precio base: €{selectedProduct.fiatPrice.toFixed(2)}</p>
-          <p>Fee plataforma (5%): €{serviceFee.toFixed(2)}</p>
-          <p>Envio: {shipping === 0 ? 'Gratis' : `€${shipping.toFixed(2)}`}</p>
-          <p>Descuento BEL: -€{discount.toFixed(2)}</p>
-          <p><strong>Total tarjeta: €{total.toFixed(2)}</strong></p>
-        </div>
+        {checkoutMode === 'coin' ? (
+          <div className="summary-box">
+            <p>Precio recompensa: {selectedProduct.belakoCoinCost} BEL</p>
+            <p>Saldo actual: {model.belakoCoins} BEL</p>
+            <p><strong>Total canje: {selectedProduct.belakoCoinCost} BEL</strong></p>
+          </div>
+        ) : (
+          <div className="summary-box">
+            <p>Precio base: €{selectedProduct.fiatPrice.toFixed(2)}</p>
+            <p>Fee plataforma (5%): €{serviceFee.toFixed(2)}</p>
+            <p>Envio: {shipping === 0 ? 'Gratis' : `€${shipping.toFixed(2)}`}</p>
+            <p>Descuento BEL: -€{discount.toFixed(2)}</p>
+            <p><strong>Total tarjeta: €{total.toFixed(2)}</strong></p>
+          </div>
+        )}
 
-        <button className={checkoutUseCoinDiscount ? 'primary' : 'ghost'} onClick={toggleCoinDiscount}>
-          {checkoutUseCoinDiscount ? 'Descuento BEL aplicado' : `Aplicar -€${coinPolicy.discountValueEur} (${coinPolicy.discountCost} BEL)`}
-        </button>
-        {!canUseCoinDiscount && !checkoutUseCoinDiscount ? <p className="hint">No tienes BEL suficiente para descuento.</p> : null}
+        {checkoutMode === 'fiat' ? (
+          <>
+            <button className={checkoutUseCoinDiscount ? 'primary' : 'ghost'} onClick={toggleCoinDiscount}>
+              {checkoutUseCoinDiscount ? 'Descuento BEL aplicado' : `Aplicar -€${coinPolicy.discountValueEur} (${coinPolicy.discountCost} BEL)`}
+            </button>
+            {!canUseCoinDiscount && !checkoutUseCoinDiscount ? <p className="hint">No tienes BEL suficiente para descuento.</p> : null}
+          </>
+        ) : !canRedeemWithCoins ? (
+          <p className="error-text">No tienes BEL suficiente para este canje.</p>
+        ) : null}
 
         <label className="checkbox-line">
           <input
@@ -115,12 +157,24 @@ export function Sheets({ model }: { model: FidelityModel }) {
 
         {checkoutError ? <p className="error-text">{checkoutError}</p> : null}
 
-        <button onClick={payWithFiat} disabled={checkoutProcessing}>
-          {checkoutProcessing ? 'Procesando pago...' : 'Confirmar pago en euros'}
-        </button>
-        <button className="ghost" onClick={() => setSheet('none')}>
-          Cancelar
-        </button>
+        <div className="checkout-actions">
+          <button
+            className="primary"
+            onClick={payWithFiat}
+            disabled={checkoutProcessing || (checkoutMode === 'coin' && !canRedeemWithCoins)}
+          >
+            {checkoutProcessing
+              ? checkoutMode === 'coin'
+                ? 'Procesando canje...'
+                : 'Redirigiendo a Stripe...'
+              : checkoutMode === 'coin'
+                ? `Confirmar canje (${selectedProduct.belakoCoinCost} BEL)`
+                : 'Pagar con Stripe'}
+          </button>
+          <button className="ghost" onClick={() => setSheet('none')}>
+            Cancelar
+          </button>
+        </div>
       </section>
     );
   }

@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { products, streams } from '../../lib/mock-data';
 import type { FidelityModel } from '../../state/use-fidelity-state';
 import { liveBadgeText } from '../../state/use-fidelity-state';
@@ -33,6 +34,31 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     notifications,
     clearNotifications
   } = model;
+  const [storeFilter, setStoreFilter] = useState<'all' | 'buy' | 'redeem'>('all');
+
+  const sortedStoreProducts = useMemo(() => {
+    const enriched = products.map((product) => ({
+      product,
+      canRedeem: belakoCoins >= product.belakoCoinCost
+    }));
+
+    const filtered = enriched.filter((entry) => {
+      if (storeFilter === 'buy') {
+        return true;
+      }
+      if (storeFilter === 'redeem') {
+        return entry.canRedeem;
+      }
+      return true;
+    });
+
+    return filtered.sort((a, b) => {
+      if (a.canRedeem !== b.canRedeem) {
+        return a.canRedeem ? -1 : 1;
+      }
+      return a.product.fiatPrice - b.product.fiatPrice;
+    });
+  }, [belakoCoins, storeFilter]);
 
   if (fanTab === 'home') {
     return (
@@ -174,14 +200,37 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         </article>
 
         <article className="metric-card">
-          <p>Tienda en recompensas</p>
+          <p>Tienda oficial y recompensas</p>
+          <div className="store-filter-row">
+            <button className={storeFilter === 'all' ? 'primary' : 'ghost'} onClick={() => setStoreFilter('all')}>
+              Todo
+            </button>
+            <button className={storeFilter === 'buy' ? 'primary' : 'ghost'} onClick={() => setStoreFilter('buy')}>
+              Solo comprables
+            </button>
+            <button className={storeFilter === 'redeem' ? 'primary' : 'ghost'} onClick={() => setStoreFilter('redeem')}>
+              Solo canjeables
+            </button>
+          </div>
           <div className="product-list">
-            {products.map((product) => (
-              <button key={product.id} className="product-card" onClick={() => openCheckout(product)}>
+            {sortedStoreProducts.map(({ product, canRedeem }) => (
+              <article key={product.id} className="product-card">
                 <strong>{product.name}</strong>
-                <small>€{product.fiatPrice.toFixed(2)} {product.limited ? '| Limitado' : ''}</small>
-                <small>Valor estimado en BEL: {product.belakoCoinCost} BEL</small>
-              </button>
+                <div className="store-badges">
+                  <span className="store-badge">MERCH</span>
+                  <span className="store-badge store-badge-reward">REWARD</span>
+                </div>
+                <small>
+                  Merch: €{product.fiatPrice.toFixed(2)} {product.limited ? '| Limitado' : ''}
+                </small>
+                <small>Canje recompensa: {product.belakoCoinCost} BEL</small>
+                <div className="product-actions">
+                  <button onClick={() => openCheckout(product, 'fiat')}>Comprar merch (€)</button>
+                  <button className="ghost" onClick={() => openCheckout(product, 'coin')} disabled={!canRedeem}>
+                    {!canRedeem ? 'BEL insuficiente' : 'Canjear con BEL'}
+                  </button>
+                </div>
+              </article>
             ))}
           </div>
         </article>

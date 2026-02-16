@@ -6,12 +6,12 @@ import { onboardingCopy, useFidelityState } from './state/use-fidelity-state';
 
 export default function App() {
   const model = useFidelityState();
-  const viewKey = `${model.role}-${model.role === 'fan' ? model.fanTab : model.artistTab}`;
-  const showPreEntry = model.role === 'fan' && !model.onboardingDone;
+  const viewKey = model.fanTab;
+  const showPreEntry = !model.onboardingDone;
 
   return (
     <div className="app-shell">
-      <TopBar role={model.role} onSwitchRole={model.switchRole} />
+      <TopBar />
 
       <main className="phone-frame">
         {showPreEntry ? (
@@ -44,13 +44,7 @@ export default function App() {
       </main>
 
       {!showPreEntry ? (
-        <BottomNav
-          role={model.role}
-          fanTab={model.fanTab}
-          artistTab={model.artistTab}
-          onFanTab={model.setFanTab}
-          onArtistTab={model.setArtistTab}
-        />
+        <BottomNav fanTab={model.fanTab} onFanTab={model.setFanTab} />
       ) : null}
 
       {!showPreEntry ? <Sheets model={model} /> : null}
