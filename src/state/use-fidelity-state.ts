@@ -49,6 +49,7 @@ const AUTH_TOKEN_KEY = 'belako_fan_token';
 const AUTH_EMAIL_KEY = 'belako_fan_email';
 const PROFILE_STORAGE_KEY = 'belako_profile_settings_v1';
 const LEGACY_ADDRESS_STORAGE_KEY = 'belako_addresses_v1';
+const PROFILE_PROGRESS_STORAGE_PREFIX = 'belako_profile_progress_v1_';
 const REWARD_HISTORY_STORAGE_KEY = 'belako_reward_history_v1';
 const PURCHASES_STORAGE_KEY = 'belako_purchases_v1';
 
@@ -114,6 +115,10 @@ function normalizeEmail(email: string): string {
 
 function userAddressStorageKey(email: string): string {
   return `belako_addresses_v2_${normalizeEmail(email)}`;
+}
+
+function userProgressStorageKey(email: string): string {
+  return `${PROFILE_PROGRESS_STORAGE_PREFIX}${normalizeEmail(email)}`;
 }
 
 function safeReadProfileSettings(): ProfileSettings {
@@ -211,8 +216,8 @@ export function useFidelityState() {
   const [liveState, setLiveState] = useState<LiveState>('live');
   const [sheet, setSheet] = useState<SheetState>('none');
 
-  const [attendanceCount, setAttendanceCount] = useState(1);
-  const [spend, setSpend] = useState(26.95);
+  const [attendanceCount, setAttendanceCount] = useState(0);
+  const [spend, setSpend] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<Product>(products[0]);
   const [fullyWatchedStreamIds, setFullyWatchedStreamIds] = useState<string[]>([]);
   const [registeredStreamIds, setRegisteredStreamIds] = useState<string[]>([]);
@@ -259,6 +264,7 @@ export function useFidelityState() {
 
   const [journeyXp, setJourneyXp] = useState(0);
   const [highestJourneyTierId, setHighestJourneyTierId] = useState<Tier['id']>('fan');
+  const [progressLastSavedAt, setProgressLastSavedAt] = useState('');
 
   const activeStream = streams[streamIndex];
 
@@ -344,6 +350,62 @@ export function useFidelityState() {
     };
   }, []);
 
+  useEffect(() => {
+    if (authStatus !== 'logged_in' || !authUserEmail) {
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(userProgressStorageKey(authUserEmail));
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as {
+        journeyXp?: number;
+        attendanceCount?: number;
+        spend?: number;
+        fullyWatchedStreamIds?: string[];
+        registeredStreamIds?: string[];
+        joinedLiveStreamIds?: string[];
+        purchasedConcertTicketIds?: string[];
+        fullLiveRewardClaimed?: boolean;
+        highestJourneyTierId?: Tier['id'];
+        savedAt?: string;
+      };
+      if (typeof parsed.journeyXp === 'number' && Number.isFinite(parsed.journeyXp)) {
+        setJourneyXp(Math.max(parsed.journeyXp, 0));
+      }
+      if (typeof parsed.attendanceCount === 'number' && Number.isFinite(parsed.attendanceCount)) {
+        setAttendanceCount(Math.max(parsed.attendanceCount, 0));
+      }
+      if (typeof parsed.spend === 'number' && Number.isFinite(parsed.spend)) {
+        setSpend(Math.max(parsed.spend, 0));
+      }
+      if (Array.isArray(parsed.fullyWatchedStreamIds)) {
+        setFullyWatchedStreamIds(parsed.fullyWatchedStreamIds);
+      }
+      if (Array.isArray(parsed.registeredStreamIds)) {
+        setRegisteredStreamIds(parsed.registeredStreamIds);
+      }
+      if (Array.isArray(parsed.joinedLiveStreamIds)) {
+        setJoinedLiveStreamIds(parsed.joinedLiveStreamIds);
+      }
+      if (Array.isArray(parsed.purchasedConcertTicketIds)) {
+        setPurchasedConcertTicketIds(parsed.purchasedConcertTicketIds);
+      }
+      if (typeof parsed.fullLiveRewardClaimed === 'boolean') {
+        setFullLiveRewardClaimed(parsed.fullLiveRewardClaimed);
+      }
+      if (parsed.highestJourneyTierId && ['fan', 'super', 'ultra', 'god'].includes(parsed.highestJourneyTierId)) {
+        setHighestJourneyTierId(parsed.highestJourneyTierId);
+      }
+      if (typeof parsed.savedAt === 'string') {
+        setProgressLastSavedAt(parsed.savedAt);
+      }
+    } catch {
+      // localStorage may be blocked or corrupted
+    }
+  }, [authStatus, authUserEmail]);
+
   const shouldShowOnboarding = authStatus === 'logged_in' && !onboardingCompleted && !onboardingDoneInSession;
 
   useEffect(() => {
@@ -375,6 +437,45 @@ export function useFidelityState() {
       // localStorage may be blocked
     }
   }, [addresses, authStatus, authUserEmail]);
+
+  useEffect(() => {
+    if (authStatus !== 'logged_in' || !authUserEmail) {
+      return;
+    }
+    const savedAt = nowLabel();
+    try {
+      localStorage.setItem(
+        userProgressStorageKey(authUserEmail),
+        JSON.stringify({
+          journeyXp,
+          attendanceCount,
+          spend,
+          fullyWatchedStreamIds,
+          registeredStreamIds,
+          joinedLiveStreamIds,
+          purchasedConcertTicketIds,
+          fullLiveRewardClaimed,
+          highestJourneyTierId,
+          savedAt
+        })
+      );
+      setProgressLastSavedAt(savedAt);
+    } catch {
+      // localStorage may be blocked
+    }
+  }, [
+    authStatus,
+    authUserEmail,
+    journeyXp,
+    attendanceCount,
+    spend,
+    fullyWatchedStreamIds,
+    registeredStreamIds,
+    joinedLiveStreamIds,
+    purchasedConcertTicketIds,
+    fullLiveRewardClaimed,
+    highestJourneyTierId
+  ]);
 
   useEffect(() => {
     try {
@@ -547,17 +648,15 @@ export function useFidelityState() {
   }, [currentJourneyTier.requiredXp, journeyXp, nextJourneyTier]);
 
   const conversion = useMemo(() => {
-    if (currentJourneyTierId === 'god') {
-      return 80;
-    }
-    if (currentJourneyTierId === 'ultra') {
-      return 65;
-    }
-    if (currentJourneyTierId === 'super') {
-      return 45;
-    }
-    return 25;
-  }, [currentJourneyTierId]);
+    const watchedSignal = joinedLiveStreamIds.length * 8;
+    const fullWatchSignal = fullyWatchedStreamIds.length * 12;
+    const merchSignal = purchases.filter((purchase) => !purchase.label.startsWith('Entrada concierto ·')).length * 25;
+    const ticketSignal = purchasedConcertTicketIds.length * 35;
+    const xpSignal = Math.min(journeyXp, 300) * 0.1;
+    const totalSignal = watchedSignal + fullWatchSignal + merchSignal + ticketSignal + xpSignal;
+    const goalSignal = 180;
+    return Math.max(0, Math.min(100, Math.round((totalSignal / goalSignal) * 100)));
+  }, [fullyWatchedStreamIds.length, joinedLiveStreamIds.length, journeyXp, purchases, purchasedConcertTicketIds.length]);
 
   useEffect(() => {
     const rank: Record<Tier['id'], number> = {
@@ -1273,6 +1372,7 @@ export function useFidelityState() {
     purchases,
     lastCompletedPurchaseId,
     conversion,
+    progressLastSavedAt,
     profileSettings,
     profileSummary,
     addresses,

@@ -63,6 +63,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     nextJourneyTier,
     journeyProgressPercent,
     conversion,
+    progressLastSavedAt,
     purchases,
     lastCompletedPurchaseId,
     profileSettings,
@@ -663,6 +664,8 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           <small>Idioma: {profileSettings.language.toUpperCase()}</small>
           <small>Privacidad: {profileSettings.isPrivateProfile ? 'Privado' : 'Público'}</small>
           <small>DM: {profileSettings.allowDm ? 'Permitidos' : 'Bloqueados'}</small>
+          <small>Progreso guardado: XP {journeyXp} · Conversión {conversion}%</small>
+          <small>Última actualización: {progressLastSavedAt || 'Pendiente'}</small>
         </div>
       </article>
 
