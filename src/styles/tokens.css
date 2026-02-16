@@ -92,7 +92,9 @@ small,
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -131,7 +133,9 @@ button.primary {
   background: linear-gradient(120deg, var(--accent-primary), var(--accent-soft));
 }
 
-input {
+input:not([type='checkbox']):not([type='radio']),
+select,
+textarea {
   border-radius: var(--r-sm);
   border: 1px solid #425478;
   background: rgba(25, 37, 58, 0.96);
@@ -140,12 +144,15 @@ input {
   padding: 0.64rem 0.62rem;
 }
 
-input::placeholder {
+input:not([type='checkbox']):not([type='radio'])::placeholder,
+textarea::placeholder {
   color: #8798ba;
 }
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
 a:focus-visible {
   outline: 2px solid #ddff47;
   outline-offset: 2px;

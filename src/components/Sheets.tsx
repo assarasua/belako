@@ -77,7 +77,6 @@ export function Sheets({ model }: { model: FidelityModel }) {
     updateCheckoutField,
     checkoutError,
     checkoutProcessing,
-    checkoutMode,
     billingProfile,
     billingLoading,
     billingError,
@@ -188,9 +187,6 @@ export function Sheets({ model }: { model: FidelityModel }) {
   const serviceFee = Number((selectedProduct.fiatPrice * 0.05).toFixed(2));
   const shipping = selectedProduct.fiatPrice >= 40 ? 0 : 4.9;
   const total = Number((selectedProduct.fiatPrice + serviceFee + shipping).toFixed(2));
-  const isEurOnly = selectedProduct.purchaseType === 'eur_only';
-  const checkoutIsCoin = checkoutMode === 'coin' && !isEurOnly;
-  const canRedeemWithCoins = checkoutIsCoin && selectedProduct.belakoCoinCost != null && model.belakoCoins >= selectedProduct.belakoCoinCost;
   const canSubmitCardSetup =
     Boolean(cardSetupClientSecret) &&
     checkoutForm.fullName.trim().length >= 3 &&
@@ -288,7 +284,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
   if (sheet === 'checkout') {
     return (
       <section className="sheet checkout-sheet" role="dialog" aria-label="Checkout">
-        <h3>{checkoutIsCoin ? 'Canje de recompensa' : 'Checkout Belako'}</h3>
+        <h3>Checkout Belako</h3>
         <p>{selectedProduct.name}</p>
 
         {checkoutImageError ? (
@@ -303,7 +299,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
           />
         )}
 
-        <p>{checkoutIsCoin ? 'Canjea este item usando Belako Coin.' : 'Pago exclusivo en euros con tarjeta.'}</p>
+        <p>Pago exclusivo en euros con tarjeta.</p>
         <small className="checkout-trust">Pago seguro procesado por Stripe. Datos cifrados de extremo a extremo.</small>
 
         <div className="sheet-grid">
@@ -335,7 +331,7 @@ export function Sheets({ model }: { model: FidelityModel }) {
           </label>
         </div>
 
-        {!checkoutIsCoin && profileSavedCardsEnabled ? (
+        {profileSavedCardsEnabled ? (
           <article className="summary-box">
             <div className="row actions-row">
               <strong>Métodos de pago guardados</strong>
@@ -356,9 +352,9 @@ export function Sheets({ model }: { model: FidelityModel }) {
                       onChange={() => setSelectedPaymentMethodId(method.id)}
                     />
                     <span>{method.brand.toUpperCase()} •••• {method.last4} · {method.expMonth}/{method.expYear}</span>
-                    {method.isDefault ? <span className="store-badge">Default</span> : null}
+                    {method.isDefault ? <span className="store-badge">Por defecto</span> : null}
                     <div className="method-actions">
-                      {!method.isDefault ? <button className="ghost" onClick={() => setDefaultSavedMethod(method.id)}>Default</button> : null}
+                      {!method.isDefault ? <button className="ghost" onClick={() => setDefaultSavedMethod(method.id)}>Usar por defecto</button> : null}
                       <button className="ghost" onClick={() => removeSavedMethod(method.id)}>Eliminar</button>
                     </div>
                   </label>
@@ -381,24 +377,12 @@ export function Sheets({ model }: { model: FidelityModel }) {
           </article>
         ) : null}
 
-        {checkoutIsCoin ? (
-          <div className="summary-box">
-            <p>Precio recompensa: {selectedProduct.belakoCoinCost ?? 0} BEL</p>
-            <p>Saldo actual: {model.belakoCoins} BEL</p>
-            <p><strong>Total canje: {selectedProduct.belakoCoinCost ?? 0} BEL</strong></p>
-          </div>
-        ) : (
-          <div className="summary-box">
-            <p>Precio base: €{selectedProduct.fiatPrice.toFixed(2)}</p>
-            <p>Fee plataforma (5%): €{serviceFee.toFixed(2)}</p>
-            <p>Envio: {shipping === 0 ? 'Gratis' : `€${shipping.toFixed(2)}`}</p>
-            <p><strong>Total tarjeta: €{total.toFixed(2)}</strong></p>
-          </div>
-        )}
-
-        {checkoutIsCoin && !canRedeemWithCoins ? (
-          <p className="error-text">No tienes BEL suficiente para este canje.</p>
-        ) : null}
+        <div className="summary-box">
+          <p>Precio base: €{selectedProduct.fiatPrice.toFixed(2)}</p>
+          <p>Fee plataforma (5%): €{serviceFee.toFixed(2)}</p>
+          <p>Envio: {shipping === 0 ? 'Gratis' : `€${shipping.toFixed(2)}`}</p>
+          <p><strong>Total tarjeta: €{total.toFixed(2)}</strong></p>
+        </div>
 
         <label className="checkbox-line">
           <input type="checkbox" checked={checkoutForm.acceptedPolicy} onChange={(e) => updateCheckoutField('acceptedPolicy', e.target.checked)} />
@@ -415,16 +399,12 @@ export function Sheets({ model }: { model: FidelityModel }) {
         {checkoutError ? <p className="error-text">{checkoutError}</p> : null}
 
         <div className="checkout-actions">
-          <button className="primary" onClick={payWithFiat} disabled={checkoutProcessing || (checkoutIsCoin && !canRedeemWithCoins)}>
+          <button className="primary" onClick={payWithFiat} disabled={checkoutProcessing}>
             {checkoutProcessing
-              ? checkoutIsCoin
-                ? 'Procesando canje...'
-                : 'Procesando pago...'
-              : checkoutIsCoin
-                ? `Confirmar canje (${selectedProduct.belakoCoinCost ?? 0} BEL)`
-                : selectedPaymentMethodId
-                  ? 'Pagar con tarjeta guardada'
-                  : 'Pagar con Stripe'}
+              ? 'Procesando pago...'
+              : selectedPaymentMethodId
+                ? 'Pagar con tarjeta guardada'
+                : 'Pagar con Stripe'}
           </button>
           <button className="ghost" onClick={() => setSheet('none')}>Cancelar</button>
         </div>

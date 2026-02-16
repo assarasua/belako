@@ -16,7 +16,6 @@ type StripeCheckoutPayload = {
   productName: string;
   customerEmail: string;
   totalAmountEur: number;
-  useCoinDiscount: boolean;
   paymentMethodId?: string;
   saveForFuture?: boolean;
 };

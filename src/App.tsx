@@ -21,7 +21,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <TopBar title={topbarTitle} subtitle={topbarSubtitle} coins={model.belakoCoins} />
+      <TopBar title={topbarTitle} subtitle={topbarSubtitle} />
 
       <main className="phone-frame">
         {showPreEntry ? (
@@ -34,7 +34,7 @@ export default function App() {
             </div>
             <ol className="pre-entry-steps">
               <li className={model.onboardingStep >= 0 ? 'done' : ''}>Personaliza tu experiencia</li>
-              <li className={model.onboardingStep >= 1 ? 'done' : ''}>Activa recompensas Belako Coin</li>
+              <li className={model.onboardingStep >= 1 ? 'done' : ''}>Activa recompensas de fidelidad</li>
               <li className={model.onboardingStep >= 2 ? 'done' : ''}>Prepara tu primer directo</li>
             </ol>
             <article className="metric-card onboarding-message">

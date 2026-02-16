@@ -20,20 +20,19 @@ export type Product = {
   name: string;
   fiatPrice: number;
   imageUrl: string;
-  purchaseType: 'eur_only' | 'eur_or_bel';
-  belakoCoinCost?: number;
   limited: boolean;
 };
 
 export type StorePriceSort = 'price_asc' | 'price_desc';
 
 export type Tier = {
-  id: 1 | 2 | 3;
+  id: 'fan' | 'super' | 'ultra' | 'god';
   title: string;
-  requirement: string;
+  requiredXp: number;
   unlocked: boolean;
-  progress: string;
-  reward: string;
+  current: boolean;
+  progressLabel: string;
+  perkLabel: string;
 };
 
 export type EventItem = {
@@ -53,7 +52,7 @@ export type RewardHistoryItem = {
   id: string;
   label: string;
   at: string;
-  type: 'coin' | 'purchase' | 'reward' | 'xp';
+  type: 'purchase' | 'reward' | 'xp';
 };
 
 export type ProfileSettings = {
@@ -136,31 +135,4 @@ export type PurchaseRecord = {
   stripeHostedInvoiceUrl?: string;
   invoiceLastSyncedAt?: string;
   invoiceError?: string;
-};
-
-export type SeasonPassTier = {
-  id: string;
-  title: string;
-  requiredXp: number;
-  rewardLabel: string;
-  claimed: boolean;
-};
-
-export type SeasonMission = {
-  id: string;
-  title: string;
-  description: string;
-  xpReward: number;
-  progress: number;
-  goal: number;
-  status: 'locked' | 'active' | 'completed' | 'claimed';
-};
-
-export type GamificationState = {
-  seasonName: string;
-  seasonEndsAt: string;
-  currentXp: number;
-  currentLevel: number;
-  nextLevelXp: number;
-  streakDays: number;
 };

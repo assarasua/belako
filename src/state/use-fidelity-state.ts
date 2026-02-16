@@ -5,7 +5,6 @@ import type {
   BillingProfile,
   EventItem,
   FanTab,
-  GamificationState,
   LiveState,
   NotificationItem,
   NotificationPreferenceKey,
@@ -13,8 +12,6 @@ import type {
   ProfileSettings,
   Product,
   RewardHistoryItem,
-  SeasonMission,
-  SeasonPassTier,
   SheetState,
   Tier
 } from '../lib/types';
@@ -41,7 +38,6 @@ type CheckoutForm = {
   acceptedPolicy: boolean;
 };
 
-type CheckoutMode = 'fiat' | 'coin';
 type AddressType = 'shipping' | 'billing';
 type AddressInput = Omit<Address, 'id' | 'isDefaultShipping' | 'isDefaultBilling'>;
 
@@ -64,12 +60,14 @@ const defaultCheckoutForm: CheckoutForm = {
 
 const xpPolicy = {
   fullLive: 50,
-  purchase: 80,
-  tierClaim: 40,
-  missionClaimBonus: 20
+  purchase: 80
 };
-
-const seasonLevels = [0, 100, 220, 380, 580, 820];
+const JOURNEY_THRESHOLDS = {
+  fan: 0,
+  super: 180,
+  ultra: 420,
+  god: 760
+} as const;
 
 const defaultProfileSettings: ProfileSettings = {
   displayName: 'Asier Sarasua',
@@ -208,9 +206,7 @@ export function useFidelityState() {
 
   const [attendanceCount, setAttendanceCount] = useState(1);
   const [spend, setSpend] = useState(26.95);
-  const [belakoCoins, setBelakoCoins] = useState(40);
   const [selectedProduct, setSelectedProduct] = useState<Product>(products[0]);
-  const [claimedTierIds, setClaimedTierIds] = useState<number[]>([]);
   const [fullyWatchedStreamIds, setFullyWatchedStreamIds] = useState<string[]>([]);
   const [fullLiveRewardClaimed, setFullLiveRewardClaimed] = useState(false);
   const [statusText, setStatusText] = useState('');
@@ -218,7 +214,6 @@ export function useFidelityState() {
   const [checkoutForm, setCheckoutForm] = useState<CheckoutForm>(defaultCheckoutForm);
   const [checkoutError, setCheckoutError] = useState('');
   const [checkoutProcessing, setCheckoutProcessing] = useState(false);
-  const [checkoutMode, setCheckoutMode] = useState<CheckoutMode>('fiat');
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState('');
   const [saveForFuture, setSaveForFuture] = useState(true);
 
@@ -230,7 +225,7 @@ export function useFidelityState() {
     {
       id: `n-${Date.now()}`,
       title: 'Bienvenida',
-      message: 'Completa hitos para ganar Belako Coin y recompensas.',
+      message: 'Completa hitos y desbloquea recompensas de fan.',
       at: nowLabel()
     }
   ]);
@@ -238,6 +233,7 @@ export function useFidelityState() {
 
   const [rewardHistory, setRewardHistory] = useState<RewardHistoryItem[]>(defaultRewardHistory);
   const [purchases, setPurchases] = useState<PurchaseRecord[]>(defaultPurchases);
+  const [lastCompletedPurchaseId, setLastCompletedPurchaseId] = useState<string | null>(null);
 
   const [profileSettings, setProfileSettings] = useState<ProfileSettings>(defaultProfileSettings);
   const [addresses, setAddresses] = useState<Address[]>(defaultAddresses);
@@ -251,50 +247,17 @@ export function useFidelityState() {
   const [cardSetupLoading, setCardSetupLoading] = useState(false);
   const [cardSetupError, setCardSetupError] = useState('');
 
-  const [seasonXp, setSeasonXp] = useState(35);
-  const [lastActivityDay, setLastActivityDay] = useState(new Date().toISOString());
-  const [streakDays, setStreakDays] = useState(1);
-  const [fullWatchCount, setFullWatchCount] = useState(0);
-  const [purchaseCount, setPurchaseCount] = useState(1);
-  const [tierClaimCount, setTierClaimCount] = useState(0);
-  const [claimedSeasonTierIds, setClaimedSeasonTierIds] = useState<string[]>([]);
-  const [claimedMissionIds, setClaimedMissionIds] = useState<string[]>([]);
+  const [journeyXp, setJourneyXp] = useState(35);
+  const [highestJourneyTierId, setHighestJourneyTierId] = useState<Tier['id']>('fan');
 
   const activeStream = streams[streamIndex];
-
-  const coinPolicy = {
-    watchReward: 5,
-    purchaseReward: 20,
-    claimReward: 30,
-    dailyWatchCoinCap: 50
-  };
-
-  function toDayKey(date: Date): string {
-    return date.toISOString().slice(0, 10);
-  }
-
-  function registerDailyActivity() {
-    const today = new Date();
-    const todayKey = toDayKey(today);
-    const lastKey = toDayKey(new Date(lastActivityDay));
-    if (todayKey === lastKey) {
-      return;
-    }
-
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-    const yesterdayKey = toDayKey(yesterday);
-
-    setStreakDays((prev) => (lastKey === yesterdayKey ? prev + 1 : 1));
-    setLastActivityDay(today.toISOString());
-  }
 
   function pushHistory(item: Omit<RewardHistoryItem, 'id' | 'at'>) {
     setRewardHistory((prev) => [{ id: `h-${Date.now()}-${Math.random()}`, at: nowLabel(), ...item }, ...prev].slice(0, 20));
   }
 
   function addXp(amount: number, reason: string) {
-    setSeasonXp((prev) => prev + amount);
+    setJourneyXp((prev) => prev + amount);
     pushHistory({ label: `+${amount} XP · ${reason}`, type: 'xp' });
   }
 
@@ -439,112 +402,109 @@ export function useFidelityState() {
     initializeBilling();
   }, [profileSavedCardsEnabled]);
 
-  const tiers: Tier[] = useMemo(() => {
+  const currentJourneyTierId = useMemo<Tier['id']>(() => {
+    if (journeyXp >= JOURNEY_THRESHOLDS.god) {
+      return 'god';
+    }
+    if (journeyXp >= JOURNEY_THRESHOLDS.ultra) {
+      return 'ultra';
+    }
+    if (journeyXp >= JOURNEY_THRESHOLDS.super) {
+      return 'super';
+    }
+    return 'fan';
+  }, [journeyXp]);
+
+  const journeyTiers: Tier[] = useMemo(() => {
     return [
       {
-        id: 1,
-        title: 'Nivel 1 - Fan activo',
-        requirement: '3 directos',
-        unlocked: attendanceCount >= 3,
-        progress: `${Math.min(attendanceCount, 3)}/3 directos`,
-        reward: '+30 BEL + boost de XP'
+        id: 'fan',
+        title: 'Fan Belako',
+        requiredXp: JOURNEY_THRESHOLDS.fan,
+        unlocked: journeyXp >= JOURNEY_THRESHOLDS.fan,
+        current: currentJourneyTierId === 'fan',
+        progressLabel: `${journeyXp}/${JOURNEY_THRESHOLDS.super} XP`,
+        perkLabel: 'Acceso base a recompensas fan'
       },
       {
-        id: 2,
-        title: 'Nivel 2 - Fan premium',
-        requirement: '10 directos + 50 EUR de gasto',
-        unlocked: attendanceCount >= 10 && spend >= 50,
-        progress: `${Math.min(attendanceCount, 10)}/10 directos | €${spend}/€50`,
-        reward: '+30 BEL + prioridad en recompensas'
+        id: 'super',
+        title: 'Super Fan Belako',
+        requiredXp: JOURNEY_THRESHOLDS.super,
+        unlocked: journeyXp >= JOURNEY_THRESHOLDS.super,
+        current: currentJourneyTierId === 'super',
+        progressLabel: `${journeyXp}/${JOURNEY_THRESHOLDS.ultra} XP`,
+        perkLabel: 'Insignia Super Fan + prioridad en drops'
       },
       {
-        id: 3,
-        title: 'Nivel 3 - Superfan Belako',
-        requirement: '20 directos + 150 EUR de gasto',
-        unlocked: attendanceCount >= 20 && spend >= 150,
-        progress: `${Math.min(attendanceCount, 20)}/20 directos | €${spend}/€150`,
-        reward: '+30 BEL + estado Superfan'
+        id: 'ultra',
+        title: 'Ultra Fan Belako',
+        requiredXp: JOURNEY_THRESHOLDS.ultra,
+        unlocked: journeyXp >= JOURNEY_THRESHOLDS.ultra,
+        current: currentJourneyTierId === 'ultra',
+        progressLabel: `${journeyXp}/${JOURNEY_THRESHOLDS.god} XP`,
+        perkLabel: 'Acceso anticipado a experiencias exclusivas'
+      },
+      {
+        id: 'god',
+        title: 'God Fan Belako',
+        requiredXp: JOURNEY_THRESHOLDS.god,
+        unlocked: journeyXp >= JOURNEY_THRESHOLDS.god,
+        current: currentJourneyTierId === 'god',
+        progressLabel: `${journeyXp} XP · MAX`,
+        perkLabel: 'Estado máximo de la comunidad Belako'
       }
     ];
-  }, [attendanceCount, spend]);
+  }, [currentJourneyTierId, journeyXp]);
+
+  const currentJourneyTier = useMemo(
+    () => journeyTiers.find((tier) => tier.id === currentJourneyTierId) || journeyTiers[0],
+    [currentJourneyTierId, journeyTiers]
+  );
+
+  const nextJourneyTier = useMemo(
+    () => journeyTiers.find((tier) => tier.requiredXp > journeyXp) || null,
+    [journeyTiers, journeyXp]
+  );
+
+  const journeyProgressPercent = useMemo(() => {
+    if (!nextJourneyTier) {
+      return 100;
+    }
+    const previousThreshold = currentJourneyTier.requiredXp;
+    const span = Math.max(nextJourneyTier.requiredXp - previousThreshold, 1);
+    const within = Math.max(journeyXp - previousThreshold, 0);
+    return Math.min((within / span) * 100, 100);
+  }, [currentJourneyTier.requiredXp, journeyXp, nextJourneyTier]);
 
   const conversion = useMemo(() => {
-    const superfan = tiers[2].unlocked ? 1 : 0;
-    const base = Math.round((attendanceCount / 30) * 100);
-    return Math.min(80, base + superfan * 8);
-  }, [attendanceCount, tiers]);
-
-  const currentLevel = useMemo(() => {
-    let level = 0;
-    for (let i = 0; i < seasonLevels.length; i += 1) {
-      if (seasonXp >= seasonLevels[i]) {
-        level = i;
-      }
+    if (currentJourneyTierId === 'god') {
+      return 80;
     }
-    return level;
-  }, [seasonXp]);
+    if (currentJourneyTierId === 'ultra') {
+      return 65;
+    }
+    if (currentJourneyTierId === 'super') {
+      return 45;
+    }
+    return 25;
+  }, [currentJourneyTierId]);
 
-  const nextLevelXp = useMemo(() => {
-    const next = seasonLevels[currentLevel + 1];
-    return next ?? seasonLevels[seasonLevels.length - 1];
-  }, [currentLevel]);
+  useEffect(() => {
+    const rank: Record<Tier['id'], number> = {
+      fan: 0,
+      super: 1,
+      ultra: 2,
+      god: 3
+    };
+    if (rank[currentJourneyTierId] <= rank[highestJourneyTierId]) {
+      return;
+    }
 
-  const seasonPass: GamificationState = useMemo(() => ({
-    seasonName: 'Temporada Sigo Regando',
-    seasonEndsAt: '2026-12-31T23:59:59.000Z',
-    currentXp: seasonXp,
-    currentLevel,
-    nextLevelXp,
-    streakDays
-  }), [currentLevel, nextLevelXp, seasonXp, streakDays]);
-
-  const seasonTiers: SeasonPassTier[] = useMemo(() => {
-    return [
-      { id: 'sp-1', title: 'Nivel 1', requiredXp: 100, rewardLabel: '+15 BEL', claimed: claimedSeasonTierIds.includes('sp-1') },
-      { id: 'sp-2', title: 'Nivel 2', requiredXp: 220, rewardLabel: 'Drop early access', claimed: claimedSeasonTierIds.includes('sp-2') },
-      { id: 'sp-3', title: 'Nivel 3', requiredXp: 380, rewardLabel: '+25 BEL', claimed: claimedSeasonTierIds.includes('sp-3') },
-      { id: 'sp-4', title: 'Nivel 4', requiredXp: 580, rewardLabel: 'Acceso anticipado a drops', claimed: claimedSeasonTierIds.includes('sp-4') },
-      { id: 'sp-5', title: 'Nivel 5', requiredXp: 820, rewardLabel: 'Perk superfan unlock', claimed: claimedSeasonTierIds.includes('sp-5') }
-    ];
-  }, [claimedSeasonTierIds]);
-
-  const seasonMissions: SeasonMission[] = useMemo(() => {
-    const definitions = [
-      {
-        id: 'm-full-live',
-        title: 'Directo completo',
-        description: 'Ver 3 directos enteros',
-        progress: fullWatchCount,
-        goal: 3,
-        xpReward: 50
-      },
-      {
-        id: 'm-first-purchase',
-        title: 'Merch supporter',
-        description: 'Completar 1 compra en la tienda',
-        progress: purchaseCount,
-        goal: 1,
-        xpReward: 80
-      },
-      {
-        id: 'm-tier-claim',
-        title: 'Ascenso fan',
-        description: 'Reclamar 1 nivel de fidelidad',
-        progress: tierClaimCount,
-        goal: 1,
-        xpReward: 40
-      }
-    ];
-
-    return definitions.map((mission) => {
-      const completed = mission.progress >= mission.goal;
-      const claimed = claimedMissionIds.includes(mission.id);
-      return {
-        ...mission,
-        status: claimed ? 'claimed' : completed ? 'completed' : 'active'
-      };
-    });
-  }, [claimedMissionIds, fullWatchCount, purchaseCount, tierClaimCount]);
+    setHighestJourneyTierId(currentJourneyTierId);
+    notify('Nuevo tier desbloqueado', `¡Has subido a ${currentJourneyTier.title}!`);
+    track('EVT_journey_tier_upgraded', `Tier alcanzado: ${currentJourneyTier.title}`);
+    pushHistory({ label: `Tier alcanzado: ${currentJourneyTier.title}`, type: 'reward' });
+  }, [currentJourneyTier.title, currentJourneyTierId, highestJourneyTierId]);
 
   const currentStreamFullyWatched = fullyWatchedStreamIds.includes(activeStream.id);
   const fullLiveRewardUnlocked = fullyWatchedStreamIds.length > 0;
@@ -566,7 +526,7 @@ export function useFidelityState() {
       setOnboardingDone(true);
       setStatusText('Onboarding completado. Ya puedes entrar a directos de Belako.');
       track('EVT_onboarding_complete', 'Fan completó onboarding');
-      notify('Onboarding completado', 'Ya puedes ganar BEL con hitos de fan.');
+      notify('Onboarding completado', 'Ya puedes avanzar en tu journey de fan.');
       return;
     }
     setOnboardingStep(next);
@@ -582,16 +542,12 @@ export function useFidelityState() {
       setStatusText('Ya has completado este directo.');
       return;
     }
-    registerDailyActivity();
-    setFullWatchCount((prev) => prev + 1);
     setFullyWatchedStreamIds((prev) => [...prev, activeStream.id]);
     setAttendanceCount((n) => n + 1);
-    setBelakoCoins((n) => n + coinPolicy.watchReward);
     addXp(xpPolicy.fullLive, 'Directo completo');
-    setStatusText(`Directo completo visto. +${coinPolicy.watchReward} BEL y recompensa especial desbloqueada.`);
+    setStatusText('Directo completo visto. Recompensa especial desbloqueada.');
     track('EVT_stream_full_watch', `Directo completo visto: ${activeStream.id}`);
-    notify('Recompensa desbloqueada', `Directo completo verificado. +${coinPolicy.watchReward} BEL y recompensa lista para reclamar.`);
-    pushHistory({ label: `+${coinPolicy.watchReward} BEL por directo completo`, type: 'coin' });
+    notify('Recompensa desbloqueada', 'Directo completo verificado y recompensa lista para reclamar.');
     pushHistory({ label: `Directo completo: ${activeStream.title}`, type: 'reward' });
   }
 
@@ -604,13 +560,10 @@ export function useFidelityState() {
       setStatusText('Recompensa de directo completo ya reclamada.');
       return;
     }
-    const fullWatchReward = 25;
     setFullLiveRewardClaimed(true);
-    setBelakoCoins((n) => n + fullWatchReward);
-    setStatusText(`Recompensa reclamada. +${fullWatchReward} BEL.`);
+    setStatusText('Recompensa reclamada.');
     track('EVT_full_live_reward_claimed', 'Recompensa de directo completo reclamada');
-    notify('Recompensa reclamada', `Has ganado +${fullWatchReward} BEL por ver el directo entero.`);
-    pushHistory({ label: `+${fullWatchReward} BEL por directo completo`, type: 'coin' });
+    notify('Recompensa reclamada', 'Has reclamado tu recompensa por ver el directo entero.');
   }
 
   function updateProfileField<K extends keyof ProfileSettings>(field: K, value: ProfileSettings[K]) {
@@ -811,14 +764,12 @@ export function useFidelityState() {
     track('EVT_fan_logout', 'Fan cerró sesión local');
   }
 
-  function openCheckout(product: Product, mode: CheckoutMode = 'fiat') {
-    const normalizedMode: CheckoutMode = product.purchaseType === 'eur_only' ? 'fiat' : mode;
+  function openCheckout(product: Product) {
     setSelectedProduct(product);
     setSheet('checkout');
-    setCheckoutMode(normalizedMode);
     setCheckoutError('');
 
-    if (normalizedMode === 'fiat' && billingProfile?.methods.length) {
+    if (billingProfile?.methods.length) {
       const defaultMethod = billingProfile.methods.find((method) => method.isDefault) || billingProfile.methods[0];
       setSelectedPaymentMethodId(defaultMethod?.id || '');
     }
@@ -834,7 +785,7 @@ export function useFidelityState() {
       country: defaultAddress?.country || prev.country
     }));
 
-    track('EVT_merch_checkout_started', `${normalizedMode === 'coin' ? 'Canje' : 'Checkout'} abierto para ${product.name}`);
+    track('EVT_merch_checkout_started', `Checkout abierto para ${product.name}`);
   }
 
   function updateCheckoutField<K extends keyof CheckoutForm>(field: K, value: CheckoutForm[K]) {
@@ -949,10 +900,7 @@ export function useFidelityState() {
     const purchaseId = `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const purchaseAt = nowLabel();
 
-    registerDailyActivity();
-    setPurchaseCount((prev) => prev + 1);
     setSpend((n) => n + amountPaid);
-    setBelakoCoins((n) => n + coinPolicy.purchaseReward);
     setPurchases((prev) => [
       {
         id: purchaseId,
@@ -967,14 +915,15 @@ export function useFidelityState() {
       },
       ...prev
     ]);
+    setLastCompletedPurchaseId(purchaseId);
     addXp(xpPolicy.purchase, `Compra ${productName}`);
     setSheet('none');
+    setFanTab('profile');
     setCheckoutProcessing(false);
-    setStatusText(`Pago confirmado: ${productName}. +${coinPolicy.purchaseReward} BEL.`);
+    setStatusText(`Pago confirmado: ${productName}.`);
     track('EVT_merch_purchase_success', `Compra en EUR completada para ${productName}`);
     notify('Compra completada', `${productName} confirmado. Revisa tu email para seguimiento.`);
     pushHistory({ label: `Compra ${productName} (€${amountPaid.toFixed(2)})`, type: 'purchase' });
-    pushHistory({ label: `+${coinPolicy.purchaseReward} BEL por compra`, type: 'coin' });
 
     if (stripeRef?.sessionId || stripeRef?.paymentIntentId) {
       void syncPurchaseInvoice(purchaseId, stripeRef);
@@ -986,29 +935,6 @@ export function useFidelityState() {
     if (validation) {
       setCheckoutError(validation);
       setStatusText(validation);
-      return;
-    }
-
-    if (checkoutMode === 'coin') {
-      if (selectedProduct.belakoCoinCost == null) {
-        setCheckoutError('Este producto solo permite compra en euros.');
-        setCheckoutProcessing(false);
-        return;
-      }
-      const coinCost = selectedProduct.belakoCoinCost;
-      if (belakoCoins < coinCost) {
-        setCheckoutError(`Saldo BEL insuficiente. Necesitas ${coinCost} BEL.`);
-        setCheckoutProcessing(false);
-        return;
-      }
-
-      setBelakoCoins((n) => n - coinCost);
-      setSheet('none');
-      setCheckoutProcessing(false);
-      setStatusText(`Canje confirmado: ${selectedProduct.name}.`);
-      track('EVT_reward_redeemed', `Canje en BEL completado para ${selectedProduct.name}`);
-      notify('Canje completado', `${selectedProduct.name} añadido a tus pedidos.`);
-      pushHistory({ label: `Canje ${selectedProduct.name} (${coinCost} BEL)`, type: 'reward' });
       return;
     }
 
@@ -1024,7 +950,6 @@ export function useFidelityState() {
       productName: selectedProduct.name,
       customerEmail: checkoutForm.email,
       totalAmountEur: total,
-      useCoinDiscount: false,
       paymentMethodId: selectedPaymentMethodId || undefined,
       saveForFuture
     });
@@ -1050,66 +975,6 @@ export function useFidelityState() {
     }
 
     window.location.assign(response.data.url);
-  }
-
-  function claimTierReward(tier: Tier) {
-    if (!tier.unlocked) {
-      setStatusText('Nivel todavia no desbloqueado.');
-      return;
-    }
-    if (claimedTierIds.includes(tier.id)) {
-      setStatusText('Recompensa ya canjeada.');
-      return;
-    }
-
-    registerDailyActivity();
-    setTierClaimCount((prev) => prev + 1);
-    setClaimedTierIds((prev) => [...prev, tier.id]);
-    setBelakoCoins((n) => n + coinPolicy.claimReward);
-    addXp(xpPolicy.tierClaim, `Claim ${tier.title}`);
-    setStatusText(`Recompensa reclamada para ${tier.title}.`);
-    notify('Recompensa reclamada', `${tier.title} completado con éxito.`);
-    track('EVT_reward_claimed', `Recompensa reclamada: ${tier.title}`);
-
-    pushHistory({ label: `Claim de ${tier.title}`, type: 'reward' });
-    pushHistory({ label: `+${coinPolicy.claimReward} BEL por reclamar recompensa`, type: 'coin' });
-  }
-
-  function claimSeasonPassTier(tierId: string) {
-    const tier = seasonTiers.find((item) => item.id === tierId);
-    if (!tier || tier.claimed) {
-      return;
-    }
-    if (seasonXp < tier.requiredXp) {
-      setStatusText('Aún no alcanzas el XP requerido para este nivel.');
-      return;
-    }
-
-    setClaimedSeasonTierIds((prev) => [...prev, tierId]);
-    if (tierId === 'sp-1') {
-      setBelakoCoins((prev) => prev + 15);
-      pushHistory({ label: 'Battle Pass: +15 BEL', type: 'coin' });
-    }
-    if (tierId === 'sp-3') {
-      setBelakoCoins((prev) => prev + 25);
-      pushHistory({ label: 'Battle Pass: +25 BEL', type: 'coin' });
-    }
-
-    notify('Battle Pass', `Recompensa reclamada: ${tier.rewardLabel}`);
-    track('EVT_battle_pass_tier_claimed', `Tier BP reclamado: ${tier.title}`);
-    pushHistory({ label: `Battle Pass ${tier.title}: ${tier.rewardLabel}`, type: 'reward' });
-  }
-
-  function claimSeasonMission(missionId: string) {
-    const mission = seasonMissions.find((item) => item.id === missionId);
-    if (!mission || mission.status !== 'completed') {
-      return;
-    }
-    setClaimedMissionIds((prev) => [...prev, missionId]);
-    addXp(mission.xpReward + xpPolicy.missionClaimBonus, mission.title);
-    notify('Misión reclamada', `${mission.title} completada (+${mission.xpReward + xpPolicy.missionClaimBonus} XP).`);
-    track('EVT_mission_claimed', `Misión reclamada: ${mission.title}`);
-    pushHistory({ label: `Misión ${mission.title} reclamada`, type: 'reward' });
   }
 
   function nextStream() {
@@ -1171,26 +1036,24 @@ export function useFidelityState() {
     sheet,
     attendanceCount,
     spend,
-    belakoCoins,
     currentStreamFullyWatched,
     fullLiveRewardUnlocked,
     fullLiveRewardClaimed,
     selectedProduct,
-    claimedTierIds,
+    journeyXp,
+    journeyTiers,
+    currentJourneyTier,
+    nextJourneyTier,
+    journeyProgressPercent,
     statusText,
     checkoutForm,
     checkoutError,
     checkoutProcessing,
-    checkoutMode,
-    coinPolicy,
     events,
     notifications,
     rewardHistory,
     purchases,
-    seasonPass,
-    seasonTiers,
-    seasonMissions,
-    tiers,
+    lastCompletedPurchaseId,
     conversion,
     profileSettings,
     profileSummary,
@@ -1217,13 +1080,10 @@ export function useFidelityState() {
     openCheckout,
     updateCheckoutField,
     payWithFiat,
-    claimTierReward,
     nextStream,
     toggleReconnectState,
     endStream,
     clearNotifications,
-    claimSeasonPassTier,
-    claimSeasonMission,
     updateProfileField,
     toggleNotification,
     addAddress,
@@ -1248,9 +1108,9 @@ export function onboardingCopy(step: number): string {
     return 'Elige estilos y sigue a Belako para personalizar tu feed.';
   }
   if (step === 1) {
-    return 'Completa hitos para ganar Belako Coin y canjear descuentos.';
+    return 'Completa hitos para subir en el journey de fan.';
   }
-  return 'Mira un directo entero para ganar tu primer Belako Coin.';
+  return 'Mira un directo entero para desbloquear tu primera recompensa.';
 }
 
 export function liveBadgeText(state: LiveState): string {

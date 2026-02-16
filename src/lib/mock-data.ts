@@ -93,7 +93,7 @@ export const streams: Stream[] = [
     title: 'Aftershow íntimo para superfans',
     startsAt: setTime(addDays(now, 49), todayHours, todayMinutes).toISOString(),
     viewers: 890,
-    rewardHint: 'Más directos vistos -> más BEL y tiers',
+    rewardHint: 'Más directos vistos -> más XP y tiers',
     genre: 'Acoustic',
     colorClass: 'stream-b'
   }
@@ -105,7 +105,6 @@ export const products: Product[] = [
     name: 'Belako LP Vinilo 12" Transparente Ed. limitada "Sigo regando"',
     fiatPrice: 26.95,
     imageUrl: 'https://www.d2fy.es/cdn/shop/products/belako-lp-vinilo-12-transparente-ed-limitada-sigo-regando-432285_1200x.jpg?v=1687479972',
-    purchaseType: 'eur_only',
     limited: false
   },
   {
@@ -113,7 +112,6 @@ export const products: Product[] = [
     name: 'Belako CD "Sigo regando"',
     fiatPrice: 12.95,
     imageUrl: 'https://www.d2fy.es/cdn/shop/products/belako-cd-sigo-regando-312426_1200x.jpg?v=1687479972',
-    purchaseType: 'eur_only',
     limited: false
   },
   {
@@ -121,7 +119,6 @@ export const products: Product[] = [
     name: 'Belako Camiseta "Sigo Regando" Negra',
     fiatPrice: 19.99,
     imageUrl: 'https://www.d2fy.es/cdn/shop/products/belako-camiseta-sigo-regando-negra-909582_1200x.jpg?v=1697158568',
-    purchaseType: 'eur_only',
     limited: false
   },
   {
@@ -129,7 +126,6 @@ export const products: Product[] = [
     name: 'Belako Camiseta "Sigo Regando" Blanca',
     fiatPrice: 19.99,
     imageUrl: 'https://www.d2fy.es/cdn/shop/products/belako-camiseta-sigo-regando-blanca-190247_1200x.jpg?v=1697158567',
-    purchaseType: 'eur_only',
     limited: false
   },
   {
@@ -137,7 +133,6 @@ export const products: Product[] = [
     name: 'Belako Camiseta "Europe 2022"',
     fiatPrice: 15.95,
     imageUrl: 'https://www.d2fy.es/cdn/shop/products/belako-camiseta-europe-2022-807549_1200x.jpg?v=1697158563',
-    purchaseType: 'eur_only',
     limited: false
   },
   {
@@ -145,7 +140,6 @@ export const products: Product[] = [
     name: 'Belako Camiseta "Europe 2022"',
     fiatPrice: 15.95,
     imageUrl: 'https://www.d2fy.es/cdn/shop/products/camiseta-european-tour-belako-396367_1200x.jpg?v=1668157220',
-    purchaseType: 'eur_only',
     limited: false
   },
   {
@@ -153,7 +147,6 @@ export const products: Product[] = [
     name: 'Belako Camiseta Edición Especial Fin de Gira',
     fiatPrice: 17,
     imageUrl: 'https://www.d2fy.es/cdn/shop/products/camiseta-edicion-especial-fin-de-gira-969633_600x.jpg?v=1649337593',
-    purchaseType: 'eur_only',
     limited: false
   },
   {
@@ -161,7 +154,6 @@ export const products: Product[] = [
     name: 'Belako Camiseta Fuego - Negra',
     fiatPrice: 14,
     imageUrl: 'https://www.d2fy.es/cdn/shop/products/camiseta-belako-negra-fuego-129088_600x.jpg?v=1649337593',
-    purchaseType: 'eur_only',
     limited: false
   },
   {
@@ -169,7 +161,6 @@ export const products: Product[] = [
     name: 'Belako Camiseta Fuego - Blanca',
     fiatPrice: 14,
     imageUrl: 'https://www.d2fy.es/cdn/shop/products/camiseta-belako-blanca-fuego-961502_600x.jpg?v=1649337593',
-    purchaseType: 'eur_only',
     limited: false
   },
   {
@@ -177,7 +168,6 @@ export const products: Product[] = [
     name: 'Belako Sudadera Capucha Fuego - Negra',
     fiatPrice: 34.95,
     imageUrl: 'https://www.d2fy.es/cdn/shop/products/sudadera-capucha-belako-negra-fuego-327412_600x.jpg?v=1649337898',
-    purchaseType: 'eur_only',
     limited: false
   }
 ];

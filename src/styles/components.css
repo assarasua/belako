@@ -134,6 +134,32 @@
   background: linear-gradient(180deg, rgba(19, 28, 44, 0), rgba(19, 28, 44, 0.92) 30%, rgba(19, 28, 44, 1));
 }
 
+.live-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: #050910;
+}
+
+.live-fullscreen-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: max(0.75rem, env(safe-area-inset-top)) 0.75rem 0.55rem;
+  background: rgba(7, 12, 21, 0.96);
+  border-bottom: 1px solid #2d3f61;
+}
+
+.live-fullscreen iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000;
+}
+
 .tier-card.unlocked {
   border-color: rgba(255, 157, 213, 0.74);
   box-shadow: 0 0 0 1px rgba(255, 157, 213, 0.35) inset;
@@ -230,7 +256,7 @@
   margin-top: 4px;
 }
 
-.battle-pass-card {
+.journey-card {
   border-radius: var(--r-md);
   border: 1px solid rgba(255, 151, 211, 0.68);
   background:
@@ -238,13 +264,6 @@
     linear-gradient(160deg, rgba(27, 35, 50, 0.98), rgba(14, 20, 32, 0.98));
   padding: var(--s-3);
   display: grid;
-  gap: var(--s-2);
-}
-
-.battle-pass-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   gap: var(--s-2);
 }
 
@@ -256,21 +275,12 @@
   animation: xp-fill 850ms var(--ease-standard);
 }
 
-.battle-pass-meta {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--s-2);
-  color: #f8ddeb;
-}
-
-.battle-tier-grid,
-.mission-grid {
+.journey-tier-grid {
   display: grid;
   gap: var(--s-2);
 }
 
-.battle-tier-card,
-.mission-card {
+.journey-tier-card {
   border-radius: var(--r-sm);
   border: 1px solid rgba(255, 155, 215, 0.38);
   background: rgba(21, 27, 41, 0.94);
@@ -280,28 +290,14 @@
   animation: card-in var(--dur-base) var(--ease-standard);
 }
 
-.battle-tier-card.unlocked {
+.journey-tier-card.unlocked {
   border-color: rgba(255, 161, 219, 0.82);
   box-shadow: 0 0 0 1px rgba(255, 161, 219, 0.3) inset;
 }
 
-.mission-card.completed {
-  border-color: rgba(255, 184, 228, 0.78);
-  box-shadow: 0 0 0 1px rgba(255, 184, 228, 0.24) inset;
-}
-
-.mission-card.claimed {
-  opacity: 0.75;
-}
-
-.mission-xp {
-  width: fit-content;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 173, 223, 0.66);
-  background: rgba(255, 173, 223, 0.18);
-  padding: 0.14rem 0.44rem;
-  font-size: 0.68rem;
-  color: #ffe8f6;
+.journey-tier-card.current {
+  border-color: rgba(255, 187, 230, 0.92);
+  box-shadow: 0 0 0 1px rgba(255, 187, 230, 0.4) inset, 0 0 20px rgba(255, 129, 199, 0.18);
 }
 
 .sheet {
@@ -386,7 +382,45 @@
 }
 
 .checkbox-line input {
-  margin-top: 0.18rem;
+  margin-top: 0.14rem;
+}
+
+.checkbox-line input[type='checkbox'] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  border: 1px solid #6e84ad;
+  border-radius: 4px;
+  background: rgba(14, 22, 36, 0.92);
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+}
+
+.checkbox-line input[type='checkbox']::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  transform: scale(0);
+  transition: transform var(--dur-fast) var(--ease-standard);
+  background: linear-gradient(120deg, #ff6fb4, #ff9ed4);
+}
+
+.checkbox-line input[type='checkbox']:checked {
+  border-color: rgba(255, 170, 223, 0.86);
+  box-shadow: 0 0 0 1px rgba(255, 143, 210, 0.32);
+}
+
+.checkbox-line input[type='checkbox']:checked::after {
+  transform: scale(1);
+}
+
+.checkbox-line input[type='checkbox']:focus-visible {
+  outline: 2px solid #ddff47;
+  outline-offset: 2px;
 }
 
 details {
@@ -462,11 +496,6 @@ details p {
   letter-spacing: 0.05em;
   padding: 0.1rem 0.38rem;
   margin-right: 4px;
-}
-
-.history-coin {
-  border-color: rgba(255, 214, 123, 0.6);
-  background: rgba(255, 214, 123, 0.17);
 }
 
 .history-xp {
@@ -550,6 +579,22 @@ details p {
   gap: var(--s-2);
 }
 
+.profile-editor-shell {
+  border-radius: var(--r-md);
+  border: 1px solid rgba(255, 163, 219, 0.68);
+  background:
+    radial-gradient(circle at 88% 10%, rgba(255, 135, 204, 0.26), transparent 44%),
+    linear-gradient(160deg, rgba(19, 28, 44, 0.98), rgba(12, 18, 30, 0.98));
+  box-shadow: 0 10px 28px rgba(8, 11, 20, 0.4);
+}
+
+.profile-editor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
 .profile-section-title {
   margin: 0;
   font-size: 0.75rem;
@@ -613,6 +658,13 @@ details p {
 .profile-form-grid {
   display: grid;
   gap: 8px;
+}
+
+.profile-form-pro {
+  border-radius: var(--r-sm);
+  border: 1px solid rgba(84, 105, 148, 0.62);
+  background: rgba(14, 21, 34, 0.8);
+  padding: 0.66rem;
 }
 
 .profile-form-grid label {

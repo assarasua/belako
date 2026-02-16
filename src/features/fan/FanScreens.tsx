@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { products, streams } from '../../lib/mock-data';
-import type { Address, StorePriceSort } from '../../lib/types';
+import type { Address, ProfileSettings, StorePriceSort } from '../../lib/types';
 import type { FidelityModel } from '../../state/use-fidelity-state';
 import { liveBadgeText } from '../../state/use-fidelity-state';
 
@@ -40,7 +40,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   const {
     fanTab,
     activeStream,
-    belakoCoins,
     attendanceCount,
     spend,
     setFanTab,
@@ -53,22 +52,17 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     fullLiveRewardClaimed,
     openCheckout,
     nextStream,
-    tiers,
-    claimTierReward,
-    claimedTierIds,
+    journeyXp,
+    journeyTiers,
+    currentJourneyTier,
+    nextJourneyTier,
+    journeyProgressPercent,
     conversion,
-    coinPolicy,
-    rewardHistory,
     purchases,
-    seasonPass,
-    seasonTiers,
-    seasonMissions,
-    claimSeasonPassTier,
-    claimSeasonMission,
+    lastCompletedPurchaseId,
     profileSettings,
     profileSummary,
     updateProfileField,
-    toggleNotification,
     addresses,
     addAddress,
     editAddress,
@@ -87,6 +81,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   const [homeFeedCount, setHomeFeedCount] = useState(6);
   const [productImageLoadErrors, setProductImageLoadErrors] = useState<Record<string, boolean>>({});
   const [profileEditing, setProfileEditing] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<ProfileSettings>(profileSettings);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [addressDraft, setAddressDraft] = useState<AddressDraft>(emptyAddressDraft);
@@ -95,6 +90,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const [passwordError, setPasswordError] = useState('');
+  const [showFullscreenLive, setShowFullscreenLive] = useState(false);
   const purchaseEntries = useMemo(
     () => purchases.slice(0, 10),
     [purchases]
@@ -121,23 +117,22 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   }
 
   const sortedStoreProducts = useMemo(() => {
-    const enriched = products.map((product) => ({
-      product,
-      canRedeem: product.purchaseType === 'eur_or_bel' && product.belakoCoinCost != null && belakoCoins >= product.belakoCoinCost
-    }));
-    return enriched.sort((a, b) =>
+    return [...products].sort((a, b) =>
       storeSort === 'price_desc'
-        ? b.product.fiatPrice - a.product.fiatPrice
-        : a.product.fiatPrice - b.product.fiatPrice
+        ? b.fiatPrice - a.fiatPrice
+        : a.fiatPrice - b.fiatPrice
     );
-  }, [belakoCoins, storeSort]);
+  }, [storeSort]);
 
   const homeFeedStreams = useMemo(() => {
     if (streams.length === 0) {
       return [];
     }
+    if (streams.length === 1) {
+      return [];
+    }
     return Array.from({ length: homeFeedCount }, (_, index) => {
-      const stream = streams[index % streams.length];
+      const stream = streams[(index + 1) % streams.length];
       return {
         stream,
         virtualId: `${stream.id}-${index}`
@@ -180,25 +175,69 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     return () => observer.disconnect();
   }, [fanTab, homeFeedStreams.length]);
 
-  function tierProgressPercent(tierId: 1 | 2 | 3): number {
-    if (tierId === 1) {
-      return Math.min((attendanceCount / 3) * 100, 100);
+  useEffect(() => {
+    if (fanTab !== 'profile' || !lastCompletedPurchaseId) {
+      return;
     }
-    if (tierId === 2) {
-      const attendanceProgress = Math.min((attendanceCount / 10) * 50, 50);
-      const spendProgress = Math.min((spend / 50) * 50, 50);
-      return attendanceProgress + spendProgress;
-    }
-    const attendanceProgress = Math.min((attendanceCount / 20) * 50, 50);
-    const spendProgress = Math.min((spend / 150) * 50, 50);
-    return attendanceProgress + spendProgress;
-  }
+    setOpenInvoiceId(lastCompletedPurchaseId);
+  }, [fanTab, lastCompletedPurchaseId]);
 
   function resetAddressEditor() {
     setEditingAddressId(null);
     setShowAddressForm(false);
     setAddressDraft(emptyAddressDraft);
     setAddressError('');
+  }
+
+  function openProfileEditor() {
+    setProfileDraft(profileSettings);
+    setProfileEditing(true);
+  }
+
+  function closeProfileEditor() {
+    setProfileDraft(profileSettings);
+    setProfileEditing(false);
+  }
+
+  function saveProfileEditor() {
+    const fields: Array<keyof Omit<ProfileSettings, 'notifications'>> = [
+      'displayName',
+      'username',
+      'bio',
+      'avatarUrl',
+      'location',
+      'website',
+      'email',
+      'phone',
+      'language',
+      'theme',
+      'isPrivateProfile',
+      'allowDm'
+    ];
+
+    fields.forEach((field) => {
+      if (profileSettings[field] !== profileDraft[field]) {
+        updateProfileField(field, profileDraft[field]);
+      }
+    });
+
+    if (
+      profileSettings.notifications.email !== profileDraft.notifications.email ||
+      profileSettings.notifications.push !== profileDraft.notifications.push ||
+      profileSettings.notifications.marketing !== profileDraft.notifications.marketing ||
+      profileSettings.notifications.liveAlerts !== profileDraft.notifications.liveAlerts
+    ) {
+      updateProfileField('notifications', profileDraft.notifications);
+    }
+
+    setProfileEditing(false);
+  }
+
+  function openFullscreenLive() {
+    if (!currentStreamFullyWatched) {
+      watchFullLive();
+    }
+    setShowFullscreenLive(true);
   }
 
   if (fanTab === 'home') {
@@ -222,7 +261,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
               track('EVT_stream_register', `Registro al próximo directo de ${activeStream.artist}`);
             }}
           >
-            {isStreamLive(activeStream.startsAt) ? 'Unir al directo' : 'Registrarse'}
+            {isStreamLive(activeStream.startsAt) ? 'Unirse' : 'Registrarse'}
           </button>
           <small>{isStreamLive(activeStream.startsAt) ? 'Acceso directo al live, sin registro adicional.' : `Empieza: ${formatStreamSchedule(activeStream.startsAt)}`}</small>
         </article>
@@ -257,7 +296,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
                       track('EVT_stream_register', `Registro al próximo directo de ${stream.artist}`);
                     }}
                   >
-                    {isStreamLive(stream.startsAt) ? 'Unir al directo' : 'Registrarse'}
+                    {isStreamLive(stream.startsAt) ? 'Unirse' : 'Registrarse'}
                   </button>
                 </article>
               ))}
@@ -270,7 +309,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
 
         <article className="metric-card">
           <p>Resumen rapido</p>
-          <small>BEL {belakoCoins} | Asistencia {attendanceCount} directos | Gasto €{spend.toFixed(2)}</small>
+          <small>Asistencia {attendanceCount} directos | Gasto €{spend.toFixed(2)}</small>
           <small>Compra segura en euros con Stripe.</small>
         </article>
       </section>
@@ -301,8 +340,8 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           </div>
 
           <div className="row">
-            <button className={currentStreamFullyWatched ? 'ghost' : 'primary'} onClick={watchFullLive}>
-              {currentStreamFullyWatched ? 'Directo completo verificado' : `Ver directo entero (+${coinPolicy.watchReward} BEL)`}
+            <button className={currentStreamFullyWatched ? 'ghost' : 'primary'} onClick={openFullscreenLive}>
+              {currentStreamFullyWatched ? 'Directo completo verificado' : 'Ver directo entero'}
             </button>
           </div>
           <small>{currentStreamFullyWatched ? 'Recompensa de directo completo desbloqueada.' : 'Ver directo entero para desbloquear recompensa.'}</small>
@@ -320,6 +359,22 @@ export function FanScreens({ model }: { model: FidelityModel }) {
             <button onClick={() => openCheckout(products[0])}>Comprar merch</button>
           </div>
         </article>
+
+        {showFullscreenLive ? (
+          <article className="live-fullscreen" role="dialog" aria-modal="true" aria-label="Directo de Belako en pantalla completa">
+            <div className="live-fullscreen-top">
+              <span className="badge">EN DIRECTO</span>
+              <button className="ghost" onClick={() => setShowFullscreenLive(false)}>Cerrar</button>
+            </div>
+            <iframe
+              src="https://www.youtube.com/embed/l7TlAz1HvSk?autoplay=1&rel=0"
+              title="Belako Live Fullscreen"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+            />
+          </article>
+        ) : null}
 
         {liveState === 'ended' ? (
           <article className="metric-card">
@@ -350,7 +405,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
             </button>
           </div>
           <div className="product-list">
-            {sortedStoreProducts.map(({ product, canRedeem }) => (
+            {sortedStoreProducts.map((product) => (
               <article key={product.id} className="product-card">
                 {productImageLoadErrors[product.id] ? (
                   <div className="product-image-fallback">Belako Merch</div>
@@ -366,21 +421,13 @@ export function FanScreens({ model }: { model: FidelityModel }) {
                 <strong>{product.name}</strong>
                 <div className="store-badges">
                   <span className="store-badge">MERCH</span>
-                  <span className="store-badge store-badge-reward">{product.purchaseType === 'eur_only' ? 'EUR' : 'EUR/BEL'}</span>
+                  <span className="store-badge store-badge-reward">EUR</span>
                 </div>
                 <small>
                   Merch: €{product.fiatPrice.toFixed(2)} {product.limited ? '| Limitado' : ''}
                 </small>
-                {product.purchaseType === 'eur_or_bel' && product.belakoCoinCost != null ? (
-                  <small>Canje recompensa: {product.belakoCoinCost} BEL</small>
-                ) : null}
                 <div className="product-actions">
-                  <button onClick={() => openCheckout(product, 'fiat')}>Comprar merch (€)</button>
-                  {product.purchaseType === 'eur_or_bel' ? (
-                    <button className="ghost" onClick={() => openCheckout(product, 'coin')} disabled={!canRedeem}>
-                      {!canRedeem ? 'BEL insuficiente' : 'Canjear con BEL'}
-                    </button>
-                  ) : null}
+                  <button onClick={() => openCheckout(product)}>Comprar merch (€)</button>
                 </div>
               </article>
             ))}
@@ -391,48 +438,35 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   }
 
   if (fanTab === 'rewards') {
-    const seasonEnd = new Date(seasonPass.seasonEndsAt);
-    const daysToSeasonEnd = Math.max(0, Math.ceil((seasonEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-
     return (
       <section className="stack">
-        <article className="battle-pass-card">
-          <div className="battle-pass-top">
-            <p className="hero-kicker">BATTLE PASS</p>
-            <span className="token-chip">Temporada: {seasonPass.seasonName}</span>
-          </div>
-          <h3>Superfan progression</h3>
+        <article className="metric-card journey-card">
+          <p className="hero-kicker">JOURNEY FAN BELAKO</p>
+          <h3>{currentJourneyTier.title}</h3>
           <p>
-            Nivel {seasonPass.currentLevel} · {seasonPass.currentXp} XP
-            {seasonPass.nextLevelXp > seasonPass.currentXp ? ` / ${seasonPass.nextLevelXp} XP` : ' · MAX'}
+            XP actual: {journeyXp}
+            {nextJourneyTier ? ` · Próximo tier en ${nextJourneyTier.requiredXp} XP` : ' · Tier máximo alcanzado'}
           </p>
           <div className="progress-track battle-track" aria-hidden="true">
-            <div
-              className="progress-fill battle-fill"
-              style={{
-                width: `${Math.min((seasonPass.currentXp / Math.max(seasonPass.nextLevelXp, 1)) * 100, 100)}%`
-              }}
-            />
+            <div className="progress-fill battle-fill" style={{ width: `${journeyProgressPercent}%` }} />
           </div>
-          <div className="battle-pass-meta">
-            <small>Racha activa: {seasonPass.streakDays} días</small>
-            <small>Finaliza en {daysToSeasonEnd} días</small>
-          </div>
+          <small>{nextJourneyTier ? `${journeyXp}/${nextJourneyTier.requiredXp} XP` : `${journeyXp} XP · MAX`}</small>
         </article>
 
         <article className="metric-card">
-          <p>Niveles Battle Pass</p>
-          <div className="battle-tier-grid">
-            {seasonTiers.map((tier) => {
-              const unlocked = seasonPass.currentXp >= tier.requiredXp;
+          <p>Tiers de usuario</p>
+          <div className="journey-tier-grid">
+            {journeyTiers.map((tier) => {
+              const status = tier.current ? 'Actual' : tier.unlocked ? 'Desbloqueado' : 'Bloqueado';
               return (
-                <article key={tier.id} className={`battle-tier-card ${unlocked ? 'unlocked' : ''}`}>
-                  <strong>{tier.title}</strong>
-                  <small>{tier.requiredXp} XP</small>
-                  <small>{tier.rewardLabel}</small>
-                  <button onClick={() => claimSeasonPassTier(tier.id)} disabled={!unlocked || tier.claimed}>
-                    {tier.claimed ? 'Reclamada' : unlocked ? 'Reclamar' : 'Bloqueada'}
-                  </button>
+                <article key={tier.id} className={`journey-tier-card ${tier.current ? 'current' : tier.unlocked ? 'unlocked' : ''}`}>
+                  <div className="row actions-row">
+                    <strong>{tier.title}</strong>
+                    <span className="store-badge">{status}</span>
+                  </div>
+                  <small>Umbral: {tier.requiredXp} XP</small>
+                  <small>{tier.perkLabel}</small>
+                  <small>{tier.progressLabel}</small>
                 </article>
               );
             })}
@@ -440,103 +474,106 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         </article>
 
         <article className="metric-card">
-          <p>Misiones activas</p>
-          <div className="mission-grid">
-            {seasonMissions.length === 0 ? (
-              <p className="hint">No hay misiones activas en este momento.</p>
-            ) : (
-              seasonMissions.map((mission) => (
-                <article key={mission.id} className={`mission-card mission-${mission.status}`}>
-                  <div className="row actions-row">
-                    <strong>{mission.title}</strong>
-                    <span className="mission-xp">+{mission.xpReward} XP</span>
-                  </div>
-                  <small>{mission.description}</small>
-                  <div className="progress-track" aria-hidden="true">
-                    <div className="progress-fill" style={{ width: `${Math.min((mission.progress / mission.goal) * 100, 100)}%` }} />
-                  </div>
-                  <small>{mission.progress}/{mission.goal}</small>
-                  <button onClick={() => claimSeasonMission(mission.id)} disabled={mission.status !== 'completed'}>
-                    {mission.status === 'claimed' ? 'Reclamada' : mission.status === 'completed' ? 'Reclamar' : 'Completar'}
-                  </button>
-                </article>
-              ))
-            )}
-          </div>
-        </article>
-
-        <h2>Niveles de fidelidad</h2>
-        {tiers.map((tier) => (
-          <article key={tier.id} className={`tier-card ${tier.unlocked ? 'unlocked' : ''}`}>
-            <h3>{tier.title}</h3>
-            <p>{tier.requirement}</p>
-            <small>{tier.progress}</small>
-            <small>Recompensa: {tier.reward}</small>
-            <div className="progress-track" aria-hidden="true">
-              <div className="progress-fill" style={{ width: `${tierProgressPercent(tier.id)}%` }} />
-            </div>
-            <button onClick={() => claimTierReward(tier)} disabled={!tier.unlocked}>
-              {claimedTierIds.includes(tier.id) ? 'Reclamada' : tier.unlocked ? 'Reclamar' : 'Bloqueada'}
-            </button>
-          </article>
-        ))}
-
-        <article className="metric-card">
           <p>Recompensa por directo completo</p>
           <small>Verifica un directo entero para desbloquear este bonus.</small>
           <button onClick={claimFullLiveReward} disabled={!fullLiveRewardUnlocked}>
-            {fullLiveRewardClaimed ? 'Reclamada' : fullLiveRewardUnlocked ? 'Reclamar +25 BEL' : 'Bloqueada'}
+            {fullLiveRewardClaimed ? 'Reclamada' : fullLiveRewardUnlocked ? 'Reclamar recompensa' : 'Bloqueada'}
           </button>
         </article>
 
-        <article className="metric-card">
-          <p>Belako Coin</p>
-          <small>Saldo actual: {belakoCoins} BEL</small>
-          <small>Hitos: ver directo entero (+{coinPolicy.watchReward} BEL) | compra merch (+{coinPolicy.purchaseReward} BEL)</small>
-          <small>Límite diario por visualización: {coinPolicy.dailyWatchCoinCap} BEL</small>
-          <small>BEL se usa para progreso fan y recompensas.</small>
-        </article>
-
-        <article className="metric-card">
-          <p>Historial de recompensas</p>
-          <div className="event-list">
-            {rewardHistory.length === 0 ? (
-              <p>Aún no hay movimientos.</p>
-            ) : (
-              rewardHistory.slice(0, 8).map((item) => (
-                <p key={item.id}>
-                  <span className={`history-tag history-${item.type}`}>{item.type.toUpperCase()}</span> {item.label} ({item.at})
-                </p>
-              ))
-            )}
-          </div>
-        </article>
       </section>
     );
   }
 
   return (
     <section className="stack">
+      {profileEditing ? (
+        <article className="metric-card profile-editor-shell">
+          <div className="profile-editor-head">
+            <p className="profile-section-title">Editar perfil</p>
+            <span className="store-badge">Belako Perfil Studio</span>
+          </div>
+          <p className="hint">Edita tu perfil y guarda cuando esté listo.</p>
+          <div className="profile-form-grid profile-form-pro">
+            <label>Nombre
+              <input value={profileDraft.displayName} onChange={(e) => setProfileDraft((prev) => ({ ...prev, displayName: e.target.value }))} />
+            </label>
+            <label>Usuario
+              <input value={profileDraft.username} onChange={(e) => setProfileDraft((prev) => ({ ...prev, username: e.target.value.replace(/\s+/g, '') }))} />
+            </label>
+            <label>Bio
+              <textarea value={profileDraft.bio} onChange={(e) => setProfileDraft((prev) => ({ ...prev, bio: e.target.value }))} rows={3} />
+            </label>
+            <label>Avatar URL
+              <input value={profileDraft.avatarUrl} onChange={(e) => setProfileDraft((prev) => ({ ...prev, avatarUrl: e.target.value }))} />
+            </label>
+            <label>Ubicación
+              <input value={profileDraft.location} onChange={(e) => setProfileDraft((prev) => ({ ...prev, location: e.target.value }))} />
+            </label>
+            <label>Web
+              <input value={profileDraft.website} onChange={(e) => setProfileDraft((prev) => ({ ...prev, website: e.target.value }))} />
+            </label>
+            <label>Email
+              <input type="email" value={profileDraft.email} onChange={(e) => setProfileDraft((prev) => ({ ...prev, email: e.target.value }))} />
+            </label>
+            <label>Teléfono
+              <input value={profileDraft.phone || ''} onChange={(e) => setProfileDraft((prev) => ({ ...prev, phone: e.target.value }))} />
+            </label>
+            <label>Idioma
+              <select value={profileDraft.language} onChange={(e) => setProfileDraft((prev) => ({ ...prev, language: e.target.value as 'es' | 'en' }))}>
+                <option value="es">Español</option>
+                <option value="en">Inglés</option>
+              </select>
+            </label>
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileDraft.isPrivateProfile} onChange={() => setProfileDraft((prev) => ({ ...prev, isPrivateProfile: !prev.isPrivateProfile }))} />
+              Perfil privado
+            </label>
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileDraft.allowDm} onChange={() => setProfileDraft((prev) => ({ ...prev, allowDm: !prev.allowDm }))} />
+              Permitir mensajes directos
+            </label>
+            <p>Notificaciones</p>
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileDraft.notifications.email} onChange={() => setProfileDraft((prev) => ({ ...prev, notifications: { ...prev.notifications, email: !prev.notifications.email } }))} />
+              Email
+            </label>
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileDraft.notifications.push} onChange={() => setProfileDraft((prev) => ({ ...prev, notifications: { ...prev.notifications, push: !prev.notifications.push } }))} />
+              Notificaciones push
+            </label>
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileDraft.notifications.marketing} onChange={() => setProfileDraft((prev) => ({ ...prev, notifications: { ...prev.notifications, marketing: !prev.notifications.marketing } }))} />
+              Marketing y promociones
+            </label>
+            <label className="checkbox-line">
+              <input type="checkbox" checked={profileDraft.notifications.liveAlerts} onChange={() => setProfileDraft((prev) => ({ ...prev, notifications: { ...prev.notifications, liveAlerts: !prev.notifications.liveAlerts } }))} />
+              Alertas de directos
+            </label>
+          </div>
+          <div className="row actions-row">
+            <button className="ghost" onClick={closeProfileEditor}>Cerrar editor</button>
+            <button className="primary" onClick={saveProfileEditor}>Guardar cambios</button>
+          </div>
+        </article>
+      ) : null}
+
       <article className="profile-hero-card profile-cover">
         <div className="profile-cover-glow" aria-hidden="true" />
         <img className="profile-avatar" src={profileSettings.avatarUrl} alt={`Avatar ${profileSummary.displayName}`} />
         <div className="profile-hero-copy">
-          <p className="hero-kicker">SUPERFAN PROFILE</p>
+          <p className="hero-kicker">PERFIL SUPERFAN</p>
           <h2>{profileSummary.displayName}</h2>
           <p>@{profileSummary.username}</p>
           <small>{profileSettings.bio}</small>
           <small>{profileSettings.location} · {profileSettings.website}</small>
         </div>
         <div className="profile-hero-actions">
-          <button className="ghost" onClick={() => setProfileEditing((prev) => prev)}>Editar perfil</button>
+          <button className="ghost" onClick={openProfileEditor}>Editar perfil</button>
         </div>
       </article>
 
       <article className="profile-kpi-grid">
-        <div className="profile-kpi-card">
-          <small>BEL Coin</small>
-          <strong>{belakoCoins}</strong>
-        </div>
         <div className="profile-kpi-card">
           <small>Asistencia</small>
           <strong>{attendanceCount} directos</strong>
@@ -549,15 +586,15 @@ export function FanScreens({ model }: { model: FidelityModel }) {
 
       <article className="metric-card profile-card fan-prime-card">
         <p className="profile-section-title">Resumen fan</p>
-        <h3>{tiers[2].unlocked ? 'Superfan Belako' : tiers[1].unlocked ? 'Fan premium' : tiers[0].unlocked ? 'Fan activo' : 'Fan en progreso'}</h3>
-        <small>Nivel temporada: {seasonPass.currentLevel} · XP {seasonPass.currentXp}/{seasonPass.nextLevelXp}</small>
+        <h3>{currentJourneyTier.title}</h3>
+        <small>
+          XP {journeyXp}
+          {nextJourneyTier ? ` / ${nextJourneyTier.requiredXp}` : ' · MAX'}
+        </small>
         <div className="progress-track" aria-hidden="true">
-          <div
-            className="progress-fill"
-            style={{ width: `${Math.min((seasonPass.currentXp / Math.max(seasonPass.nextLevelXp, 1)) * 100, 100)}%` }}
-          />
+          <div className="progress-fill" style={{ width: `${journeyProgressPercent}%` }} />
         </div>
-        <small>Racha: {seasonPass.streakDays} días · Conversión fan: {conversion}%</small>
+        <small>Conversión fan: {conversion}%</small>
         <div className="row actions-row">
           <button onClick={() => setFanTab('rewards')}>Ver progreso</button>
         </div>
@@ -565,76 +602,13 @@ export function FanScreens({ model }: { model: FidelityModel }) {
 
       <article className="metric-card profile-card">
         <p className="profile-section-title">Configuración de cuenta</p>
-
-        {profileEditing ? (
-          <div className="profile-form-grid">
-            <label>Nombre
-              <input value={profileSettings.displayName} onChange={(e) => updateProfileField('displayName', e.target.value)} />
-            </label>
-            <label>Usuario
-              <input value={profileSettings.username} onChange={(e) => updateProfileField('username', e.target.value.replace(/\s+/g, ''))} />
-            </label>
-            <label>Bio
-              <textarea value={profileSettings.bio} onChange={(e) => updateProfileField('bio', e.target.value)} rows={3} />
-            </label>
-            <label>Avatar URL
-              <input value={profileSettings.avatarUrl} onChange={(e) => updateProfileField('avatarUrl', e.target.value)} />
-            </label>
-            <label>Ubicación
-              <input value={profileSettings.location} onChange={(e) => updateProfileField('location', e.target.value)} />
-            </label>
-            <label>Website
-              <input value={profileSettings.website} onChange={(e) => updateProfileField('website', e.target.value)} />
-            </label>
-            <label>Email
-              <input type="email" value={profileSettings.email} onChange={(e) => updateProfileField('email', e.target.value)} />
-            </label>
-            <label>Teléfono
-              <input value={profileSettings.phone || ''} onChange={(e) => updateProfileField('phone', e.target.value)} />
-            </label>
-            <label>Idioma
-              <select value={profileSettings.language} onChange={(e) => updateProfileField('language', e.target.value as 'es' | 'en')}>
-                <option value="es">Español</option>
-                <option value="en">English</option>
-              </select>
-            </label>
-
-            <label className="checkbox-line">
-              <input type="checkbox" checked={profileSettings.isPrivateProfile} onChange={() => updateProfileField('isPrivateProfile', !profileSettings.isPrivateProfile)} />
-              Perfil privado
-            </label>
-            <label className="checkbox-line">
-              <input type="checkbox" checked={profileSettings.allowDm} onChange={() => updateProfileField('allowDm', !profileSettings.allowDm)} />
-              Permitir mensajes directos
-            </label>
-
-            <p>Notificaciones</p>
-            <label className="checkbox-line">
-              <input type="checkbox" checked={profileSettings.notifications.email} onChange={() => toggleNotification('email')} />
-              Email
-            </label>
-            <label className="checkbox-line">
-              <input type="checkbox" checked={profileSettings.notifications.push} onChange={() => toggleNotification('push')} />
-              Push
-            </label>
-            <label className="checkbox-line">
-              <input type="checkbox" checked={profileSettings.notifications.marketing} onChange={() => toggleNotification('marketing')} />
-              Marketing
-            </label>
-            <label className="checkbox-line">
-              <input type="checkbox" checked={profileSettings.notifications.liveAlerts} onChange={() => toggleNotification('liveAlerts')} />
-              Alertas live
-            </label>
-          </div>
-        ) : (
-          <div className="profile-summary-grid">
-            <small>Email: {profileSettings.email || 'No configurado'}</small>
-            <small>Teléfono: {profileSettings.phone || 'No configurado'}</small>
-            <small>Idioma: {profileSettings.language.toUpperCase()}</small>
-            <small>Privacidad: {profileSettings.isPrivateProfile ? 'Privado' : 'Público'}</small>
-            <small>DM: {profileSettings.allowDm ? 'Permitidos' : 'Bloqueados'}</small>
-          </div>
-        )}
+        <div className="profile-summary-grid">
+          <small>Email: {profileSettings.email || 'No configurado'}</small>
+          <small>Teléfono: {profileSettings.phone || 'No configurado'}</small>
+          <small>Idioma: {profileSettings.language.toUpperCase()}</small>
+          <small>Privacidad: {profileSettings.isPrivateProfile ? 'Privado' : 'Público'}</small>
+          <small>DM: {profileSettings.allowDm ? 'Permitidos' : 'Bloqueados'}</small>
+        </div>
       </article>
 
       <article className="metric-card profile-card">
@@ -660,7 +634,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
                 <strong>{method.brand.toUpperCase()} •••• {method.last4}</strong>
                 <small>Caduca {method.expMonth}/{method.expYear}</small>
                 <div className="row actions-row">
-                  {method.isDefault ? <span className="store-badge">Por defecto</span> : <button className="ghost" onClick={() => setDefaultSavedMethod(method.id)}>Hacer default</button>}
+                  {method.isDefault ? <span className="store-badge">Por defecto</span> : <button className="ghost" onClick={() => setDefaultSavedMethod(method.id)}>Usar por defecto</button>}
                   <button className="ghost" onClick={() => removeSavedMethod(method.id)}>Eliminar</button>
                 </div>
               </article>
