@@ -213,7 +213,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
       'location',
       'website',
       'email',
-      'phone',
       'language',
       'theme',
       'isPrivateProfile',
@@ -531,9 +530,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
             <label>Email
               <input type="email" value={profileDraft.email} onChange={(e) => setProfileDraft((prev) => ({ ...prev, email: e.target.value }))} />
             </label>
-            <label>Teléfono
-              <input value={profileDraft.phone || ''} onChange={(e) => setProfileDraft((prev) => ({ ...prev, phone: e.target.value }))} />
-            </label>
             <label>Idioma
               <select value={profileDraft.language} onChange={(e) => setProfileDraft((prev) => ({ ...prev, language: e.target.value as 'es' | 'en' }))}>
                 <option value="es">Español</option>
@@ -619,7 +615,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         <p className="profile-section-title">Configuración de cuenta</p>
         <div className="profile-summary-grid">
           <small>Email: {profileSettings.email || 'No configurado'}</small>
-          <small>Teléfono: {profileSettings.phone || 'No configurado'}</small>
           <small>Idioma: {profileSettings.language.toUpperCase()}</small>
           <small>Privacidad: {profileSettings.isPrivateProfile ? 'Privado' : 'Público'}</small>
           <small>DM: {profileSettings.allowDm ? 'Permitidos' : 'Bloqueados'}</small>

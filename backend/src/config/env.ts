@@ -1,6 +1,18 @@
 import dotenv from 'dotenv';
+import fs from 'node:fs';
+import path from 'node:path';
 
-dotenv.config();
+const envCandidates = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'backend/.env'),
+  path.resolve(process.cwd(), '../.env')
+];
+
+for (const candidate of envCandidates) {
+  if (fs.existsSync(candidate)) {
+    dotenv.config({ path: candidate, override: false });
+  }
+}
 
 export const env = {
   port: Number(process.env.PORT || 4000),

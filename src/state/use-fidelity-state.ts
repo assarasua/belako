@@ -18,6 +18,7 @@ import type {
 import {
   bootstrapCustomer,
   clearStoredAuth,
+  completeOnboarding,
   createSetupIntent,
   createStripeCheckoutSession,
   fetchAuthSession,
@@ -47,10 +48,9 @@ type AddressInput = Omit<Address, 'id' | 'isDefaultShipping' | 'isDefaultBilling
 const AUTH_TOKEN_KEY = 'belako_fan_token';
 const AUTH_EMAIL_KEY = 'belako_fan_email';
 const PROFILE_STORAGE_KEY = 'belako_profile_settings_v1';
-const ADDRESS_STORAGE_KEY = 'belako_addresses_v1';
+const LEGACY_ADDRESS_STORAGE_KEY = 'belako_addresses_v1';
 const REWARD_HISTORY_STORAGE_KEY = 'belako_reward_history_v1';
 const PURCHASES_STORAGE_KEY = 'belako_purchases_v1';
-const ONBOARDING_DONE_PREFIX = 'onboarding_done_';
 
 const defaultCheckoutForm: CheckoutForm = {
   fullName: '',
@@ -76,14 +76,13 @@ const JOURNEY_THRESHOLDS = {
 } as const;
 
 const defaultProfileSettings: ProfileSettings = {
-  displayName: 'Asier Sarasua',
-  username: 'assarasua',
-  bio: 'Creative Farmer',
-  avatarUrl: '/asier-avatar.jpg',
-  location: 'Tolosa, Euskadi',
-  website: 'https://bizkardolab.eus',
-  email: 'assarasua@gmail.com',
-  phone: '+34615788239',
+  displayName: '',
+  username: '',
+  bio: '',
+  avatarUrl: 'https://www.gravatar.com/avatar/?d=mp&s=200',
+  location: '',
+  website: '',
+  email: '',
   language: 'es',
   theme: 'dark',
   isPrivateProfile: false,
@@ -96,41 +95,26 @@ const defaultProfileSettings: ProfileSettings = {
   }
 };
 
-const defaultAddresses: Address[] = [
-  {
-    id: 'addr-default',
-    label: 'Principal',
-    fullName: 'Asier Sarasua',
-    line1: 'Calle Mayor 1',
-    line2: '',
-    city: 'Tolosa',
-    postalCode: '20400',
-    country: 'España',
-    isDefaultShipping: true,
-    isDefaultBilling: true
-  }
-];
+const defaultAddresses: Address[] = [];
 
 const defaultRewardHistory: RewardHistoryItem[] = [
   {
-    id: 'h-initial-vinyl',
-    label: 'Compra Belako LP Vinilo 12" Transparente Ed. limitada "Sigo regando" (€26.95)',
+    id: 'h-initial-welcome',
+    label: 'Cuenta fan creada. Empieza tu journey Belako.',
     at: nowLabel(),
-    type: 'purchase'
+    type: 'reward'
   }
 ];
 
-const defaultPurchases: PurchaseRecord[] = [
-  {
-    id: 'p-initial-vinyl',
-    label: 'Belako LP Vinilo 12" Transparente Ed. limitada "Sigo regando"',
-    at: nowLabel(),
-    amountEur: 26.95,
-    status: 'paid',
-    customerName: 'Asier Sarasua',
-    customerEmail: 'assarasua@gmail.com'
-  }
-];
+const defaultPurchases: PurchaseRecord[] = [];
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function userAddressStorageKey(email: string): string {
+  return `belako_addresses_v2_${normalizeEmail(email)}`;
+}
 
 function safeReadProfileSettings(): ProfileSettings {
   try {
@@ -152,19 +136,29 @@ function safeReadProfileSettings(): ProfileSettings {
   }
 }
 
-function safeReadAddresses(): Address[] {
+function safeReadAddresses(email: string): Address[] {
+  const key = userAddressStorageKey(email);
   try {
-    const raw = localStorage.getItem(ADDRESS_STORAGE_KEY);
-    if (!raw) {
-      return defaultAddresses;
+    const rawUser = localStorage.getItem(key);
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser) as Address[];
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
     }
-    const parsed = JSON.parse(raw) as Address[];
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      return defaultAddresses;
+
+    const rawLegacy = localStorage.getItem(LEGACY_ADDRESS_STORAGE_KEY);
+    if (!rawLegacy) {
+      return [];
     }
-    return parsed;
+    const parsedLegacy = JSON.parse(rawLegacy) as Address[];
+    if (!Array.isArray(parsedLegacy)) {
+      return [];
+    }
+    localStorage.setItem(key, JSON.stringify(parsedLegacy));
+    return parsedLegacy;
   } catch {
-    return defaultAddresses;
+    return [];
   }
 }
 
@@ -200,10 +194,6 @@ function safeReadPurchases(): PurchaseRecord[] {
   }
 }
 
-function onboardingDoneKey(email: string): string {
-  return `${ONBOARDING_DONE_PREFIX}${email.trim().toLowerCase()}`;
-}
-
 export function useFidelityState() {
   const [fanTab, setFanTabState] = useState<FanTab>('home');
 
@@ -215,6 +205,7 @@ export function useFidelityState() {
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingDoneInSession, setOnboardingDoneInSession] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
 
   const [streamIndex, setStreamIndex] = useState(0);
   const [liveState, setLiveState] = useState<LiveState>('live');
@@ -266,7 +257,7 @@ export function useFidelityState() {
   const [cardSetupLoading, setCardSetupLoading] = useState(false);
   const [cardSetupError, setCardSetupError] = useState('');
 
-  const [journeyXp, setJourneyXp] = useState(35);
+  const [journeyXp, setJourneyXp] = useState(0);
   const [highestJourneyTierId, setHighestJourneyTierId] = useState<Tier['id']>('fan');
 
   const activeStream = streams[streamIndex];
@@ -294,18 +285,10 @@ export function useFidelityState() {
     setNotifications([]);
   }
 
-  function computeIsNewUser(email: string): boolean {
-    try {
-      return !Boolean(localStorage.getItem(onboardingDoneKey(email)));
-    } catch {
-      return true;
-    }
-  }
-
   useEffect(() => {
     let cancelled = false;
     setProfileSettings(safeReadProfileSettings());
-    setAddresses(safeReadAddresses());
+    setAddresses(defaultAddresses);
     setRewardHistory(safeReadRewardHistory());
     setPurchases(safeReadPurchases());
 
@@ -325,6 +308,8 @@ export function useFidelityState() {
           setAuthStatus('logged_out');
           setAuthUserEmail('');
           setAuthProvider(null);
+          setOnboardingCompleted(false);
+          setIsNewUser(false);
         }
         return;
       }
@@ -336,8 +321,15 @@ export function useFidelityState() {
       setAuthStatus('logged_in');
       setAuthUserEmail(email);
       setAuthProvider(session.data.user.authProvider || 'email');
-      setIsNewUser(computeIsNewUser(email));
-      setProfileSettings((prev) => ({ ...prev, email: prev.email || email }));
+      setOnboardingCompleted(Boolean(session.data.user.onboardingCompleted));
+      setIsNewUser(!Boolean(session.data.user.onboardingCompleted));
+      setProfileSettings((prev) => ({
+        ...prev,
+        email,
+        displayName: prev.displayName || session.data?.user?.name || '',
+        username: prev.username || email.split('@')[0] || '',
+        avatarUrl: session.data?.user?.picture || prev.avatarUrl
+      }));
       setCheckoutForm((prev) => ({ ...prev, email }));
       try {
         localStorage.setItem(AUTH_EMAIL_KEY, email);
@@ -352,7 +344,7 @@ export function useFidelityState() {
     };
   }, []);
 
-  const shouldShowOnboarding = authStatus === 'logged_in' && isNewUser && !onboardingDoneInSession;
+  const shouldShowOnboarding = authStatus === 'logged_in' && !onboardingCompleted && !onboardingDoneInSession;
 
   useEffect(() => {
     try {
@@ -366,12 +358,23 @@ export function useFidelityState() {
   }, [profileSettings]);
 
   useEffect(() => {
+    if (authStatus !== 'logged_in' || !authUserEmail) {
+      setAddresses([]);
+      return;
+    }
+    setAddresses(safeReadAddresses(authUserEmail));
+  }, [authStatus, authUserEmail]);
+
+  useEffect(() => {
+    if (authStatus !== 'logged_in' || !authUserEmail) {
+      return;
+    }
     try {
-      localStorage.setItem(ADDRESS_STORAGE_KEY, JSON.stringify(addresses));
+      localStorage.setItem(userAddressStorageKey(authUserEmail), JSON.stringify(addresses));
     } catch {
       // localStorage may be blocked
     }
-  }, [addresses]);
+  }, [addresses, authStatus, authUserEmail]);
 
   useEffect(() => {
     try {
@@ -584,7 +587,7 @@ export function useFidelityState() {
     const defaultBilling = addresses.find((item) => item.isDefaultBilling);
     return {
       displayName: profileSettings.displayName || 'Fan Belako',
-      username: profileSettings.username || 'belako.superfan',
+      username: profileSettings.username || profileSettings.email.split('@')[0] || 'fan',
       defaultShipping,
       defaultBilling
     };
@@ -601,15 +604,25 @@ export function useFidelityState() {
       return;
     }
 
-    const email = response.data.user.email.trim().toLowerCase();
+    const user = response.data.user;
+    const email = user.email.trim().toLowerCase();
     setAuthStatus('logged_in');
     setAuthUserEmail(email);
     setAuthProvider('google');
-    setIsNewUser(computeIsNewUser(email));
+    const isNewUserHint = Boolean(user.isNewUserHint);
+    const onboardingDone = Boolean(user.onboardingCompleted);
+    setOnboardingCompleted(onboardingDone);
+    setIsNewUser(isNewUserHint || !onboardingDone);
     setOnboardingStep(0);
     setOnboardingDoneInSession(false);
     setFanTabState('home');
-    setProfileSettings((prev) => ({ ...prev, email, displayName: prev.displayName || email.split('@')[0] }));
+    setProfileSettings((prev) => ({
+      ...prev,
+      email,
+      displayName: user.name || prev.displayName || email.split('@')[0],
+      username: prev.username || email.split('@')[0] || '',
+      avatarUrl: user.picture || prev.avatarUrl
+    }));
     setCheckoutForm((prev) => ({ ...prev, email }));
     setStatusText('Sesión iniciada con Google.');
     track('EVT_google_login_success', `Login Google: ${email}`);
@@ -623,13 +636,10 @@ export function useFidelityState() {
     if (!authUserEmail) {
       return;
     }
-    try {
-      localStorage.setItem(onboardingDoneKey(authUserEmail), '1');
-    } catch {
-      // localStorage may be blocked
-    }
+    void completeOnboarding();
     setOnboardingDoneInSession(true);
     setIsNewUser(false);
+    setOnboardingCompleted(true);
     setOnboardingStep(0);
     setFanTabState('home');
     setStatusText('Onboarding completado. Bienvenido a Belako SuperFan.');

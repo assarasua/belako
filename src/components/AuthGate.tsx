@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { FidelityModel } from '../state/use-fidelity-state';
 
 type GoogleCredentialResponse = {
@@ -55,7 +55,6 @@ function loadGoogleScript(): Promise<void> {
 
 export function AuthGate({ model }: { model: FidelityModel }) {
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
-  const [authIntent, setAuthIntent] = useState<'login' | 'signup'>('login');
   const clientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
   const canRenderGoogle = Boolean(clientId);
 
@@ -87,7 +86,7 @@ export function AuthGate({ model }: { model: FidelityModel }) {
           theme: 'outline',
           size: 'large',
           shape: 'pill',
-          text: authIntent === 'login' ? 'signin_with' : 'signup_with',
+          text: 'continue_with',
           width: 320
         });
       } catch {
@@ -99,39 +98,16 @@ export function AuthGate({ model }: { model: FidelityModel }) {
     return () => {
       cancelled = true;
     };
-  }, [authIntent, canRenderGoogle, clientId, model]);
+  }, [canRenderGoogle, clientId, model]);
 
   return (
     <main className="auth-shell" aria-label="Inicio de sesión">
       <section className="auth-card">
         <header className="auth-head">
           <p className="auth-kicker">Belako SuperFan App</p>
-          <h1>{authIntent === 'login' ? 'Bienvenido de vuelta' : 'Crea tu Fan Zone'}</h1>
-          <p className="auth-copy">
-            {authIntent === 'login'
-              ? 'Accede a tus conciertos, compras y progreso de fan.'
-              : 'Regístrate y empieza tu journey de tiers Belako desde el primer directo.'}
-          </p>
+          <h1>Accede a tu Fan Zone</h1>
+          <p className="auth-copy">Entra con Google y continúa con tus conciertos, compras y progreso de fan.</p>
         </header>
-
-        <div className="auth-mode-switch auth-mode-switch-pro" role="tablist" aria-label="Modo de acceso">
-          <button
-            className={authIntent === 'login' ? 'primary' : 'ghost'}
-            role="tab"
-            aria-selected={authIntent === 'login'}
-            onClick={() => setAuthIntent('login')}
-          >
-            Iniciar sesión
-          </button>
-          <button
-            className={authIntent === 'signup' ? 'primary' : 'ghost'}
-            role="tab"
-            aria-selected={authIntent === 'signup'}
-            onClick={() => setAuthIntent('signup')}
-          >
-            Crear cuenta
-          </button>
-        </div>
 
         <div className="auth-icon-row" aria-hidden="true">
           <span className="auth-icon">CONCIERTOS</span>

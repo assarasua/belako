@@ -7,6 +7,8 @@ export type AuthUser = {
   role: 'fan' | 'artist' | 'admin';
   email?: string;
   authProvider?: 'google' | 'email';
+  name?: string;
+  picture?: string;
 };
 
 declare module 'express-serve-static-core' {

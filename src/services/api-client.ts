@@ -34,11 +34,27 @@ type StripeCheckoutResponse =
 
 type AuthLoginResponse = {
   token: string;
-  user: { email: string; role: 'fan' | 'artist'; authProvider?: 'google' | 'email' };
+  user: {
+    email: string;
+    role: 'fan' | 'artist';
+    authProvider?: 'google' | 'email';
+    name?: string;
+    picture?: string;
+    isNewUserHint?: boolean;
+    onboardingCompleted?: boolean;
+  };
 };
 
 type AuthSessionResponse = {
-  user: { email: string; role: 'fan' | 'artist'; authProvider?: 'google' | 'email' };
+  user: {
+    email: string;
+    role: 'fan' | 'artist';
+    authProvider?: 'google' | 'email';
+    name?: string;
+    picture?: string;
+    isRegistered?: boolean;
+    onboardingCompleted?: boolean;
+  };
 };
 
 async function authorizedFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -98,6 +114,28 @@ export async function fetchAuthSession(): Promise<ApiResult<AuthSessionResponse>
     return { ok: true, data };
   } catch {
     return { ok: false, error: 'No se pudo verificar la sesión.' };
+  }
+}
+
+export async function completeOnboarding(): Promise<ApiResult<{ ok: boolean; onboardingCompleted: boolean }>> {
+  try {
+    const response = await authorizedFetch('/auth/onboarding/complete', {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    const data = (await response.json()) as { ok?: boolean; onboardingCompleted?: boolean; error?: string };
+    if (!response.ok || !data.ok) {
+      return { ok: false, error: data?.error || 'No se pudo registrar onboarding en backend.' };
+    }
+    return {
+      ok: true,
+      data: {
+        ok: true,
+        onboardingCompleted: Boolean(data.onboardingCompleted)
+      }
+    };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
   }
 }
 

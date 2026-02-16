@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Request, Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
 import {
@@ -42,13 +42,23 @@ const invoiceQuerySchema = z
 
 export const commerceRoutes = Router();
 
+function authEmail(req: Request): string | null {
+  const candidate = (req.authUser?.email || req.authUser?.sub || '').trim().toLowerCase();
+  return candidate.includes('@') ? candidate : null;
+}
+
 commerceRoutes.get('/config', (_req, res) => {
   res.json({ publishableKey: env.stripePublishableKey });
 });
 
 commerceRoutes.post('/customer/bootstrap', requireAuth, async (req, res) => {
+  const email = authEmail(req);
+  if (!email) {
+    res.status(400).json({ error: 'No se pudo resolver el email autenticado para pagos.' });
+    return;
+  }
   try {
-    const customerId = await getOrCreateCustomerByEmail(req.authUser!.sub);
+    const customerId = await getOrCreateCustomerByEmail(email);
     res.status(201).json({ customerId });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Customer bootstrap error';
@@ -72,8 +82,13 @@ commerceRoutes.post('/setup-intent', requireAuth, async (req, res) => {
 });
 
 commerceRoutes.get('/payment-methods', requireAuth, async (req, res) => {
+  const email = authEmail(req);
+  if (!email) {
+    res.status(400).json({ error: 'No se pudo resolver el email autenticado para pagos.' });
+    return;
+  }
   try {
-    const customerId = await getOrCreateCustomerByEmail(req.authUser!.sub);
+    const customerId = await getOrCreateCustomerByEmail(email);
     const methods = await listSavedPaymentMethods(customerId);
     res.json({ customerId, methods });
   } catch (error) {
@@ -88,8 +103,13 @@ commerceRoutes.post('/payment-methods/default', requireAuth, async (req, res) =>
     res.status(400).json({ error: 'Invalid input' });
     return;
   }
+  const email = authEmail(req);
+  if (!email) {
+    res.status(400).json({ error: 'No se pudo resolver el email autenticado para pagos.' });
+    return;
+  }
   try {
-    const customerId = await getOrCreateCustomerByEmail(req.authUser!.sub);
+    const customerId = await getOrCreateCustomerByEmail(email);
     await setDefaultPaymentMethod(customerId, parsed.data.paymentMethodId);
     res.json({ ok: true });
   } catch (error) {
@@ -99,8 +119,13 @@ commerceRoutes.post('/payment-methods/default', requireAuth, async (req, res) =>
 });
 
 commerceRoutes.delete('/payment-methods/:paymentMethodId', requireAuth, async (req, res) => {
+  const email = authEmail(req);
+  if (!email) {
+    res.status(400).json({ error: 'No se pudo resolver el email autenticado para pagos.' });
+    return;
+  }
   try {
-    const customerId = await getOrCreateCustomerByEmail(req.authUser!.sub);
+    const customerId = await getOrCreateCustomerByEmail(email);
     await removeSavedPaymentMethod(customerId, req.params.paymentMethodId);
     res.json({ ok: true });
   } catch (error) {
@@ -116,12 +141,17 @@ commerceRoutes.get('/invoice', requireAuth, async (req, res) => {
     return;
   }
 
+  const email = authEmail(req);
+  if (!email) {
+    res.status(400).json({ error: 'No se pudo resolver el email autenticado para facturas.' });
+    return;
+  }
+
   try {
-    const ownerEmail = req.authUser!.sub;
     const { sessionId, paymentIntentId } = parsed.data;
     const invoice = sessionId
-      ? await getStripeInvoiceBySessionId(ownerEmail, sessionId)
-      : await getStripeInvoiceByPaymentIntentId(ownerEmail, paymentIntentId!);
+      ? await getStripeInvoiceBySessionId(email, sessionId)
+      : await getStripeInvoiceByPaymentIntentId(email, paymentIntentId!);
     res.json(invoice);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Invoice lookup error';
