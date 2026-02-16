@@ -34,68 +34,11 @@ type StripeCheckoutResponse =
 
 type AuthLoginResponse = {
   token: string;
-  user: { email: string; role: 'fan' | 'artist' };
+  user: { email: string; role: 'fan' | 'artist'; authProvider?: 'google' | 'email' };
 };
 
-function getPreferredAuthEmail(): string | null {
-  try {
-    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
-    if (!raw) {
-      return null;
-    }
-    const parsed = JSON.parse(raw) as { email?: string };
-    if (!parsed.email || !parsed.email.includes('@')) {
-      return null;
-    }
-    return parsed.email.trim().toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-async function loginWithEmail(email: string): Promise<string | null> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, role: 'fan' })
-    });
-    const data = (await response.json()) as AuthLoginResponse;
-    if (!response.ok || !data.token) {
-      return null;
-    }
-    localStorage.setItem(AUTH_TOKEN_KEY, data.token);
-    localStorage.setItem(AUTH_EMAIL_KEY, email);
-    return data.token;
-  } catch {
-    return null;
-  }
-}
-
-async function getOrCreateAuthToken(): Promise<string | null> {
-  const existing = localStorage.getItem(AUTH_TOKEN_KEY);
-  const preferredEmail = getPreferredAuthEmail();
-  const existingEmail = localStorage.getItem(AUTH_EMAIL_KEY);
-  const normalizedExisting = existingEmail ? existingEmail.trim().toLowerCase() : '';
-
-  // Keep auth identity aligned with profile email so Stripe customer mapping is stable.
-  if (existing && preferredEmail && preferredEmail !== normalizedExisting) {
-    const refreshed = await loginWithEmail(preferredEmail);
-    if (refreshed) {
-      return refreshed;
-    }
-  }
-
-  if (existing) {
-    return existing;
-  }
-
-  const email = preferredEmail || existingEmail || `fan-${Math.random().toString(36).slice(2, 10)}@belako.app`;
-  return loginWithEmail(email);
-}
-
 async function authorizedFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = await getOrCreateAuthToken();
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
   const headers = new Headers(init?.headers || {});
   headers.set('Content-Type', 'application/json');
   if (token) {
@@ -106,6 +49,39 @@ async function authorizedFetch(path: string, init?: RequestInit): Promise<Respon
     ...init,
     headers
   });
+}
+
+export async function loginWithGoogle(idToken: string): Promise<ApiResult<AuthLoginResponse>> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken })
+    });
+    const data = (await response.json()) as AuthLoginResponse & { error?: string };
+
+    if (!response.ok || !data.token || !data.user?.email) {
+      return { ok: false, error: data?.error || 'No se pudo iniciar sesión con Google.' };
+    }
+
+    const normalizedEmail = data.user.email.trim().toLowerCase();
+    localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+    localStorage.setItem(AUTH_EMAIL_KEY, normalizedEmail);
+
+    try {
+      const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...parsed, email: normalizedEmail }));
+      }
+    } catch {
+      // ignore local profile sync failures
+    }
+
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
 }
 
 export async function createStripeCheckoutSession(payload: StripeCheckoutPayload): Promise<ApiResult<StripeCheckoutResponse>> {

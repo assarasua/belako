@@ -46,6 +46,117 @@
   gap: var(--s-3);
 }
 
+.auth-shell,
+.onboarding-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+  background:
+    radial-gradient(900px 500px at 85% -15%, rgba(255, 115, 186, 0.22), transparent 62%),
+    radial-gradient(900px 600px at 5% -10%, rgba(116, 169, 255, 0.2), transparent 58%),
+    linear-gradient(160deg, #0a101c, #111b2c 68%, #0c1423);
+}
+
+.auth-card,
+.onboarding-card {
+  width: min(100%, 430px);
+  min-height: min(92vh, 760px);
+  border-radius: 26px;
+  border: 1px solid rgba(255, 166, 218, 0.45);
+  background:
+    radial-gradient(circle at 88% 8%, rgba(255, 133, 204, 0.2), transparent 42%),
+    linear-gradient(170deg, rgba(18, 27, 43, 0.96), rgba(12, 20, 33, 0.97));
+  box-shadow: var(--elevation-3);
+  padding: 1.1rem;
+  display: grid;
+  grid-template-rows: auto auto auto auto auto 1fr auto;
+  gap: 0.9rem;
+}
+
+.auth-kicker {
+  margin: 0;
+  color: #ffb7de;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.auth-copy {
+  margin: 0;
+  color: #dbe6ff;
+  line-height: 1.45;
+}
+
+.auth-icon-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.auth-icon,
+.onboarding-icon {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 160, 218, 0.5);
+  background: rgba(255, 128, 198, 0.13);
+  color: #ffe5f4;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  min-height: 42px;
+  display: inline-grid;
+  place-items: center;
+}
+
+.auth-google-button {
+  min-height: 44px;
+  display: grid;
+  align-content: start;
+}
+
+.auth-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.auth-mode-switch button {
+  min-height: 42px;
+}
+
+.auth-footnote {
+  color: #bfcde9;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.onboarding-icon-wrap {
+  display: grid;
+  justify-content: center;
+}
+
+.onboarding-icon {
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
+  font-size: 1rem;
+  background:
+    radial-gradient(circle at top, rgba(255, 184, 227, 0.3), transparent 60%),
+    rgba(255, 128, 198, 0.13);
+}
+
+.onboarding-fixed-actions {
+  position: sticky;
+  bottom: max(0.5rem, env(safe-area-inset-bottom));
+  padding-top: 0.8rem;
+  background: linear-gradient(180deg, rgba(14, 22, 35, 0), rgba(14, 22, 35, 0.94) 35%, rgba(14, 22, 35, 1));
+}
+
+.onboarding-fixed-actions button {
+  width: 100%;
+}
+
 .pre-entry-steps {
   margin: 0;
   padding-left: 1rem;

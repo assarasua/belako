@@ -22,6 +22,7 @@ import {
   fetchPaymentMethods,
   fetchStripeInvoice,
   fetchStripeConfig,
+  loginWithGoogle,
   removePaymentMethod,
   setDefaultPaymentMethod
 } from '../services/api-client';
@@ -47,6 +48,7 @@ const PROFILE_STORAGE_KEY = 'belako_profile_settings_v1';
 const ADDRESS_STORAGE_KEY = 'belako_addresses_v1';
 const REWARD_HISTORY_STORAGE_KEY = 'belako_reward_history_v1';
 const PURCHASES_STORAGE_KEY = 'belako_purchases_v1';
+const ONBOARDING_DONE_PREFIX = 'onboarding_done_';
 
 const defaultCheckoutForm: CheckoutForm = {
   fullName: '',
@@ -194,11 +196,21 @@ function safeReadPurchases(): PurchaseRecord[] {
   }
 }
 
+function onboardingDoneKey(email: string): string {
+  return `${ONBOARDING_DONE_PREFIX}${email.trim().toLowerCase()}`;
+}
+
 export function useFidelityState() {
   const [fanTab, setFanTabState] = useState<FanTab>('home');
 
+  const [authStatus, setAuthStatus] = useState<'logged_out' | 'logging_in' | 'logged_in'>('logged_out');
+  const [authUserEmail, setAuthUserEmail] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [authProvider, setAuthProvider] = useState<'google' | 'email' | null>(null);
+
   const [onboardingStep, setOnboardingStep] = useState(0);
-  const [onboardingDone, setOnboardingDone] = useState(false);
+  const [onboardingDoneInSession, setOnboardingDoneInSession] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false);
 
   const [streamIndex, setStreamIndex] = useState(0);
   const [liveState, setLiveState] = useState<LiveState>('live');
@@ -275,17 +287,34 @@ export function useFidelityState() {
     setNotifications([]);
   }
 
+  function computeIsNewUser(email: string): boolean {
+    try {
+      return !Boolean(localStorage.getItem(onboardingDoneKey(email)));
+    } catch {
+      return true;
+    }
+  }
+
   useEffect(() => {
     setProfileSettings(safeReadProfileSettings());
     setAddresses(safeReadAddresses());
     setRewardHistory(safeReadRewardHistory());
     setPurchases(safeReadPurchases());
-    const savedEmail = localStorage.getItem(AUTH_EMAIL_KEY) || '';
-    if (savedEmail) {
-      setProfileSettings((prev) => ({ ...prev, email: prev.email || savedEmail }));
-      setCheckoutForm((prev) => ({ ...prev, email: prev.email || savedEmail }));
+    const savedEmail = (localStorage.getItem(AUTH_EMAIL_KEY) || '').trim().toLowerCase();
+    const savedToken = localStorage.getItem(AUTH_TOKEN_KEY) || '';
+    if (savedEmail && savedToken) {
+      setAuthStatus('logged_in');
+      setAuthUserEmail(savedEmail);
+      setAuthProvider('google');
+      setIsNewUser(computeIsNewUser(savedEmail));
+      setProfileSettings((prev) => ({ ...prev, email: savedEmail }));
+      setCheckoutForm((prev) => ({ ...prev, email: savedEmail }));
+      return;
     }
+    setAuthStatus('logged_out');
   }, []);
+
+  const shouldShowOnboarding = authStatus === 'logged_in' && isNewUser && !onboardingDoneInSession;
 
   useEffect(() => {
     try {
@@ -359,7 +388,7 @@ export function useFidelityState() {
   }, [statusText]);
 
   async function refreshPaymentMethods() {
-    if (!profileSavedCardsEnabled) {
+    if (!profileSavedCardsEnabled || authStatus !== 'logged_in') {
       return;
     }
     setBillingLoading(true);
@@ -379,7 +408,7 @@ export function useFidelityState() {
 
   useEffect(() => {
     async function initializeBilling() {
-      if (!profileSavedCardsEnabled) {
+      if (!profileSavedCardsEnabled || authStatus !== 'logged_in') {
         return;
       }
 
@@ -400,7 +429,7 @@ export function useFidelityState() {
     }
 
     initializeBilling();
-  }, [profileSavedCardsEnabled]);
+  }, [authStatus, profileSavedCardsEnabled]);
 
   const currentJourneyTierId = useMemo<Tier['id']>(() => {
     if (journeyXp >= JOURNEY_THRESHOLDS.god) {
@@ -520,16 +549,51 @@ export function useFidelityState() {
     };
   }, [addresses, profileSettings.displayName, profileSettings.username]);
 
-  function completeOnboarding() {
-    const next = onboardingStep + 1;
-    if (next >= 3) {
-      setOnboardingDone(true);
-      setStatusText('Onboarding completado. Ya puedes entrar a directos de Belako.');
-      track('EVT_onboarding_complete', 'Fan completó onboarding');
-      notify('Onboarding completado', 'Ya puedes avanzar en tu journey de fan.');
+  async function loginWithGoogleToken(idToken: string) {
+    setAuthStatus('logging_in');
+    setAuthError('');
+
+    const response = await loginWithGoogle(idToken);
+    if (!response.ok || !response.data?.user?.email) {
+      setAuthStatus('logged_out');
+      setAuthError(response.error || 'No se pudo iniciar sesión con Google.');
       return;
     }
-    setOnboardingStep(next);
+
+    const email = response.data.user.email.trim().toLowerCase();
+    setAuthStatus('logged_in');
+    setAuthUserEmail(email);
+    setAuthProvider('google');
+    setIsNewUser(computeIsNewUser(email));
+    setOnboardingStep(0);
+    setOnboardingDoneInSession(false);
+    setFanTabState('home');
+    setProfileSettings((prev) => ({ ...prev, email, displayName: prev.displayName || email.split('@')[0] }));
+    setCheckoutForm((prev) => ({ ...prev, email }));
+    setStatusText('Sesión iniciada con Google.');
+    track('EVT_google_login_success', `Login Google: ${email}`);
+  }
+
+  function completeOnboardingStep() {
+    setOnboardingStep((prev) => Math.min(prev + 1, 2));
+  }
+
+  function finishOnboardingForCurrentUser() {
+    if (!authUserEmail) {
+      return;
+    }
+    try {
+      localStorage.setItem(onboardingDoneKey(authUserEmail), '1');
+    } catch {
+      // localStorage may be blocked
+    }
+    setOnboardingDoneInSession(true);
+    setIsNewUser(false);
+    setOnboardingStep(0);
+    setFanTabState('home');
+    setStatusText('Onboarding completado. Bienvenido a Belako SuperFan.');
+    track('EVT_onboarding_complete', 'Fan completó onboarding full-screen');
+    notify('Todo listo', 'Ya puedes explorar directos y tienda desde Home.');
   }
 
   function setFanTab(tab: FanTab) {
@@ -760,6 +824,15 @@ export function useFidelityState() {
     localStorage.removeItem(AUTH_EMAIL_KEY);
     setBillingProfile(null);
     setSelectedPaymentMethodId('');
+    setAuthStatus('logged_out');
+    setAuthUserEmail('');
+    setAuthProvider(null);
+    setAuthError('');
+    setOnboardingDoneInSession(false);
+    setOnboardingStep(0);
+    setIsNewUser(false);
+    setFanTabState('home');
+    setSheet('none');
     setStatusText('Sesión cerrada.');
     track('EVT_fan_logout', 'Fan cerró sesión local');
   }
@@ -1028,8 +1101,14 @@ export function useFidelityState() {
 
   return {
     fanTab,
+    authStatus,
+    authUserEmail,
+    authError,
+    authProvider,
+    shouldShowOnboarding,
+    isNewUser,
     onboardingStep,
-    onboardingDone,
+    onboardingDoneInSession,
     streamIndex,
     activeStream,
     liveState,
@@ -1069,12 +1148,13 @@ export function useFidelityState() {
     selectedPaymentMethodId,
     saveForFuture,
     setFanTab,
-    setOnboardingDone,
     setSheet,
     setSelectedPaymentMethodId,
     setSaveForFuture,
     setCardSetupError,
-    completeOnboarding,
+    loginWithGoogleToken,
+    completeOnboardingStep,
+    finishOnboardingForCurrentUser,
     watchFullLive,
     claimFullLiveReward,
     openCheckout,
