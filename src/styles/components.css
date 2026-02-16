@@ -655,6 +655,16 @@ details p {
   text-align: center;
   display: inline-grid;
   place-items: center;
+  color: #ff8fc9;
+  border-color: rgba(255, 143, 210, 0.55);
+  background: rgba(255, 120, 195, 0.14);
+}
+
+.ghost-link:hover,
+.ghost-link:focus-visible {
+  color: #ffd7ee;
+  border-color: rgba(255, 177, 226, 0.86);
+  background: rgba(255, 145, 210, 0.24);
 }
 
 .history-tag {

@@ -817,9 +817,9 @@ export function FanScreens({ model }: { model: FidelityModel }) {
                 </button>
                 {openInvoiceId === purchase.id ? (
                   <div className="invoice-box">
-                    <small><strong>Factura:</strong> {purchase.stripePaymentIntentId || `INV-${purchase.id.slice(-6).toUpperCase()}`}</small>
-                    <small><strong>Cliente:</strong> {purchase.customerName || profileSummary.displayName}</small>
-                    <small><strong>Email:</strong> {purchase.customerEmail || profileSettings.email}</small>
+                    <small><strong>Factura:</strong> {purchase.stripePaymentIntentId || 'Pendiente de sincronizar con Stripe'}</small>
+                    <small><strong>Cliente:</strong> {purchase.customerName || 'Pendiente'}</small>
+                    <small><strong>Email:</strong> {purchase.customerEmail || 'Pendiente'}</small>
                     <small><strong>Concepto:</strong> {purchase.label}</small>
                     <small><strong>Fecha:</strong> {purchase.at}</small>
                     <small><strong>Importe:</strong> €{purchase.amountEur.toFixed(2)}</small>
