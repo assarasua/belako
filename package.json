@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "deploy:branch": "npm run build && git subtree push --prefix dist origin gh-pages",
     "preview": "vite preview",
     "backend:dev": "npm --prefix backend run dev",
     "backend:build": "npm --prefix backend run build"
