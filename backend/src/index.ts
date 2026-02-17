@@ -62,6 +62,7 @@ app.get('/', (_req, res) => {
       catalogStore: '/catalog/store-items',
       catalogConcerts: '/catalog/concerts',
       catalogLives: '/catalog/lives',
+      catalogLiveSubscribe: '/catalog/lives/subscribe',
       catalogRewards: '/catalog/rewards-config',
       loyalty: '/loyalty/evaluate',
       commerceCheckout: '/commerce/checkout',
@@ -79,6 +80,9 @@ app.get('/', (_req, res) => {
       dashboardStore: '/dashboard/store-items',
       dashboardConcerts: '/dashboard/concerts',
       dashboardLives: '/dashboard/lives',
+      dashboardSales: '/dashboard/sales-overview',
+      dashboardUsers: '/dashboard/users',
+      dashboardLiveSubscriptions: '/dashboard/live-subscriptions',
       dashboardRewards: '/dashboard/rewards',
       analytics: '/analytics/track'
     }

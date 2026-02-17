@@ -190,6 +190,50 @@ async function main() {
         colorClass: 'stream-a',
         youtubeUrl: '',
         isActive: true
+      },
+      {
+        artist: 'Belako',
+        title: 'Backstage stories + Q&A',
+        startsAt: addDays(28, 20, 0),
+        viewers: 1130,
+        rewardHint: 'Interactúa en chat para ganar presencia',
+        genre: 'Alternative',
+        colorClass: 'stream-b',
+        youtubeUrl: '',
+        isActive: true
+      },
+      {
+        artist: 'Belako',
+        title: 'Belako en vivo: set completo',
+        startsAt: addDays(35, 21, 30),
+        viewers: 2795,
+        rewardHint: 'Directo largo para acelerar progreso',
+        genre: 'Live set',
+        colorClass: 'stream-c',
+        youtubeUrl: '',
+        isActive: true
+      },
+      {
+        artist: 'Belako',
+        title: 'Pre-show de gira: warm-up',
+        startsAt: addDays(42, 19, 45),
+        viewers: 1422,
+        rewardHint: 'Asiste hoy y desbloquea hitos antes',
+        genre: 'Indie rock',
+        colorClass: 'stream-a',
+        youtubeUrl: '',
+        isActive: true
+      },
+      {
+        artist: 'Belako',
+        title: 'Aftershow íntimo para superfans',
+        startsAt: addDays(49, 20, 0),
+        viewers: 890,
+        rewardHint: 'Más directos vistos -> más XP y tiers',
+        genre: 'Acoustic',
+        colorClass: 'stream-b',
+        youtubeUrl: '',
+        isActive: true
       }
     ]
   });

@@ -11,6 +11,7 @@ import {
   deleteReward,
   deleteStoreItem,
   getDashboardStore,
+  listLiveSubscriptions,
   setTierConfig,
   setXpActionConfig,
   updateConcert,
@@ -18,6 +19,8 @@ import {
   updateReward,
   updateStoreItem
 } from '../services/catalog-service.js';
+import { listDashboardSalesOverview } from '../services/sales-service.js';
+import { listRegisteredUsers } from '../services/user-registry-service.js';
 
 const storeItemSchema = z.object({
   name: z.string().min(1),
@@ -76,6 +79,21 @@ const rewardSchema = z.object({
 export const dashboardRoutes = Router();
 
 dashboardRoutes.use(requireAuth, requireRole('artist'));
+
+dashboardRoutes.get('/sales-overview', async (_req, res) => {
+  const data = await listDashboardSalesOverview();
+  res.json(data);
+});
+
+dashboardRoutes.get('/users', async (_req, res) => {
+  const items = await listRegisteredUsers();
+  res.json({ items });
+});
+
+dashboardRoutes.get('/live-subscriptions', async (_req, res) => {
+  const items = await listLiveSubscriptions();
+  res.json({ items });
+});
 
 dashboardRoutes.get('/rewards-config', async (_req, res) => {
   const store = await getDashboardStore();

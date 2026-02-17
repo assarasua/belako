@@ -47,7 +47,12 @@ model User {
   id           String   @id @default(cuid())
   email        String   @unique
   role         Role
+  authProvider String   @default("email")
+  onboardingCompleted Boolean @default(false)
+  name         String?
+  picture      String?
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   streams      Stream[] @relation("ArtistStreams")
   attendances  Attendance[]
   bids         Bid[]
@@ -267,6 +272,7 @@ model BandConcert {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  registrations BandConcertRegistration[]
 }
 
 model BandLive {
@@ -282,4 +288,55 @@ model BandLive {
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  subscriptions BandLiveSubscription[]
+}
+
+model BandLiveSubscription {
+  id         String   @id @default(cuid())
+  liveId     String
+  userEmail  String
+  userName   String?
+  source     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  live       BandLive @relation(fields: [liveId], references: [id], onDelete: Cascade)
+
+  @@unique([liveId, userEmail])
+  @@index([userEmail])
+}
+
+model BandSale {
+  id             String   @id @default(cuid())
+  userEmail      String
+  customerEmail  String
+  customerName   String?
+  productId      String
+  productName    String
+  itemType       String
+  amountEur      Decimal  @db.Decimal(10, 2)
+  status         String
+  stripeSessionId String? @unique
+  paymentIntentId String? @unique
+  paidAt         DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  registrations  BandConcertRegistration[]
+}
+
+model BandConcertRegistration {
+  id         String   @id @default(cuid())
+  concertId  String
+  userEmail  String
+  userName   String?
+  status     String
+  source     String
+  saleId     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  concert    BandConcert @relation(fields: [concertId], references: [id], onDelete: Cascade)
+  sale       BandSale?   @relation(fields: [saleId], references: [id], onDelete: SetNull)
+
+  @@unique([concertId, userEmail])
+  @@index([userEmail])
+  @@index([status])
 }

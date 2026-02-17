@@ -69,6 +69,68 @@ export type RewardsConfig = {
   rewards: RewardConfigItem[];
 };
 
+export type DashboardSalesOverview = {
+  summary: {
+    totalSalesCount: number;
+    paidSalesCount: number;
+    pendingSalesCount: number;
+    merchSalesCount: number;
+    ticketSalesCount: number;
+    totalRevenueEur: number;
+    totalConcertRegistrations: number;
+  };
+  sales: Array<{
+    id: string;
+    createdAt: string;
+    paidAt: string | null;
+    userEmail: string;
+    customerEmail: string;
+    customerName: string;
+    productId: string;
+    productName: string;
+    itemType: string;
+    amountEur: number;
+    status: string;
+    stripeSessionId: string;
+    paymentIntentId: string;
+  }>;
+  concertRegistrations: Array<{
+    id: string;
+    createdAt: string;
+    userEmail: string;
+    userName: string;
+    status: string;
+    source: string;
+    concertId: string;
+    concertTitle: string;
+    concertVenue: string;
+    concertCity: string;
+    concertStartsAt: string;
+    saleId: string;
+    saleAmountEur: number | null;
+  }>;
+};
+
+export type RegisteredUserItem = {
+  email: string;
+  role: 'fan' | 'artist';
+  authProvider: 'google' | 'email';
+  onboardingCompleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LiveSubscriptionItem = {
+  id: string;
+  liveId: string;
+  liveTitle: string;
+  liveStartsAt: string;
+  userEmail: string;
+  userName?: string;
+  source: string;
+  createdAt: string;
+};
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
 const TOKEN_KEY = 'belako_fan_token';
 
@@ -160,6 +222,27 @@ export async function getRewardsConfig(): Promise<ApiResult<RewardsConfig>> {
   } catch {
     return { ok: false, error: 'No se pudo conectar con el backend.' };
   }
+}
+
+export async function getSalesOverview(): Promise<ApiResult<DashboardSalesOverview>> {
+  try {
+    const response = await authFetch('/dashboard/sales-overview');
+    const data = (await response.json()) as DashboardSalesOverview & { error?: string };
+    if (!response.ok) {
+      return { ok: false, error: data.error || 'No se pudieron cargar ventas.' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function getRegisteredUsers(): Promise<ApiResult<RegisteredUserItem[]>> {
+  return getItems<RegisteredUserItem>('/dashboard/users');
+}
+
+export async function getLiveSubscriptions(): Promise<ApiResult<LiveSubscriptionItem[]>> {
+  return getItems<LiveSubscriptionItem>('/dashboard/live-subscriptions');
 }
 
 async function send<T>(path: string, method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', body?: unknown): Promise<ApiResult<T>> {

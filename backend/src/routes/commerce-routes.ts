@@ -11,12 +11,14 @@ import {
   removeSavedPaymentMethod,
   setDefaultPaymentMethod
 } from '../services/commerce-service.js';
+import { createOrUpdateBandSale, markBandSalePaid } from '../services/sales-service.js';
 import { env } from '../config/env.js';
 
 const checkoutSchema = z.object({
   productId: z.string().min(1),
   productName: z.string().min(1),
   customerEmail: z.string().email(),
+  customerName: z.string().min(1).max(120).optional(),
   totalAmountEur: z.number().positive(),
   useCoinDiscount: z.boolean().optional().default(false),
   paymentMethodId: z.string().min(1).optional(),
@@ -152,6 +154,7 @@ commerceRoutes.get('/invoice', requireAuth, async (req, res) => {
     const invoice = sessionId
       ? await getStripeInvoiceBySessionId(email, sessionId)
       : await getStripeInvoiceByPaymentIntentId(email, paymentIntentId!);
+    await markBandSalePaid({ sessionId, paymentIntentId: invoice.paymentIntentId || paymentIntentId });
     res.json(invoice);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Invoice lookup error';
@@ -172,6 +175,18 @@ commerceRoutes.post('/checkout', requireAuth, async (req, res) => {
 
   try {
     const result = await createStripeCheckoutSession(parsed.data);
+    const requesterEmail = authEmail(req) || parsed.data.customerEmail;
+    await createOrUpdateBandSale({
+      userEmail: requesterEmail,
+      customerEmail: parsed.data.customerEmail,
+      customerName: parsed.data.customerName,
+      productId: parsed.data.productId,
+      productName: parsed.data.productName,
+      amountEur: parsed.data.totalAmountEur,
+      stripeSessionId: result.mode === 'checkout' ? result.sessionId : undefined,
+      paymentIntentId: result.mode === 'payment_intent' ? result.paymentIntentId : undefined,
+      status: result.mode === 'payment_intent' ? 'PAID' : 'PENDING'
+    });
     res.status(201).json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Checkout error';

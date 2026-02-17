@@ -22,6 +22,7 @@ type StripeCheckoutPayload = {
   productId: string;
   productName: string;
   customerEmail: string;
+  customerName?: string;
   totalAmountEur: number;
   paymentMethodId?: string;
   saveForFuture?: boolean;
@@ -336,6 +337,22 @@ export async function fetchRewardsConfig(): Promise<ApiResult<RewardsConfig>> {
       return { ok: false, error: data.error || 'No se pudo cargar configuración de recompensas.' };
     }
     return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function subscribeToLive(liveId: string, userName?: string): Promise<ApiResult<{ ok: true }>> {
+  try {
+    const response = await authorizedFetch('/catalog/lives/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ liveId, userName })
+    });
+    const data = (await response.json()) as { ok?: true; error?: string };
+    if (!response.ok || !data.ok) {
+      return { ok: false, error: data.error || 'No se pudo registrar tu suscripción al live.' };
+    }
+    return { ok: true, data: { ok: true } };
   } catch {
     return { ok: false, error: 'No se pudo conectar con el backend.' };
   }

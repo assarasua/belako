@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { requireAuth } from '../middleware/auth.js';
+import { prisma } from '../lib/prisma.js';
 
 const bodySchema = z.object({
   email: z.string().email(),
@@ -16,111 +15,22 @@ const googleBodySchema = z.object({
 
 export const authRoutes = Router();
 
-type RegisteredUser = {
-  email: string;
-  role: 'fan' | 'artist';
-  authProvider: 'google' | 'email';
-  onboardingCompleted: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
+type AuthProvider = 'google' | 'email';
+type AppRole = 'fan' | 'artist';
 
-function resolveRegistryPath() {
-  const candidates = [
-    path.resolve(process.cwd(), 'backend/data/user-registry.json'),
-    path.resolve(process.cwd(), 'data/user-registry.json'),
-    path.resolve(process.cwd(), '../backend/data/user-registry.json')
-  ];
-  const existing = candidates.find((candidate) => fs.existsSync(path.dirname(candidate)));
-  return existing || candidates[0];
-}
-
-function safeReadRegistry(): Record<string, RegisteredUser> {
-  const registryPath = resolveRegistryPath();
-  try {
-    if (!fs.existsSync(registryPath)) {
-      return {};
-    }
-    const raw = fs.readFileSync(registryPath, 'utf-8');
-    const parsed = JSON.parse(raw) as Record<string, RegisteredUser>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function safeWriteRegistry(registry: Record<string, RegisteredUser>) {
-  const registryPath = resolveRegistryPath();
-  try {
-    fs.mkdirSync(path.dirname(registryPath), { recursive: true });
-    fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2));
-  } catch {
-    // ignore write errors in MVP mode
-  }
-}
-
-function getOrCreateRegisteredUser(input: {
-  email: string;
-  role: 'fan' | 'artist';
-  authProvider: 'google' | 'email';
-}) {
-  const email = input.email.trim().toLowerCase();
-  const now = new Date().toISOString();
-  const registry = safeReadRegistry();
-  const existing = registry[email];
-  if (existing) {
-    const updated: RegisteredUser = {
-      ...existing,
-      role: input.role,
-      authProvider: input.authProvider,
-      updatedAt: now
-    };
-    registry[email] = updated;
-    safeWriteRegistry(registry);
-    return { user: updated, isNewUser: false };
-  }
-
-  const created: RegisteredUser = {
-    email,
-    role: input.role,
-    authProvider: input.authProvider,
-    onboardingCompleted: false,
-    createdAt: now,
-    updatedAt: now
-  };
-  registry[email] = created;
-  safeWriteRegistry(registry);
-  return { user: created, isNewUser: true };
-}
-
-function findRegisteredUser(email: string) {
-  const normalized = email.trim().toLowerCase();
-  const registry = safeReadRegistry();
-  return registry[normalized] || null;
-}
-
-function markOnboardingCompleted(email: string) {
-  const normalized = email.trim().toLowerCase();
-  const registry = safeReadRegistry();
-  const existing = registry[normalized];
-  if (!existing) {
-    return null;
-  }
-  const updated: RegisteredUser = {
-    ...existing,
-    onboardingCompleted: true,
-    updatedAt: new Date().toISOString()
-  };
-  registry[normalized] = updated;
-  safeWriteRegistry(registry);
-  return updated;
-}
-
-function normalizeRole(role: string | undefined): 'fan' | 'artist' {
+function normalizeRole(role: string | undefined): AppRole {
   return role === 'artist' ? 'artist' : 'fan';
 }
 
-function resolveRoleForGoogleEmail(email: string): 'fan' | 'artist' {
+function toPrismaRole(role: AppRole): 'FAN' | 'ARTIST' {
+  return role === 'artist' ? 'ARTIST' : 'FAN';
+}
+
+function fromPrismaRole(role: string | undefined): AppRole {
+  return role === 'ARTIST' ? 'artist' : 'fan';
+}
+
+function resolveRoleForGoogleEmail(email: string): AppRole {
   if (env.allowAllDashboardEmails) {
     return 'artist';
   }
@@ -128,39 +38,78 @@ function resolveRoleForGoogleEmail(email: string): 'fan' | 'artist' {
   return env.bandAllowedEmails.includes(normalized) ? 'artist' : 'fan';
 }
 
-authRoutes.post('/login', (req, res) => {
+async function upsertAuthUser(input: {
+  email: string;
+  role: AppRole;
+  authProvider: AuthProvider;
+  name?: string;
+  picture?: string;
+}) {
+  const email = input.email.trim().toLowerCase();
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (!existing) {
+    const created = await prisma.user.create({
+      data: {
+        email,
+        role: toPrismaRole(input.role),
+        authProvider: input.authProvider,
+        onboardingCompleted: false,
+        name: input.name || undefined,
+        picture: input.picture || undefined
+      }
+    });
+    return { user: created, isNewUser: true };
+  }
+
+  const updated = await prisma.user.update({
+    where: { email },
+    data: {
+      role: toPrismaRole(input.role),
+      authProvider: input.authProvider,
+      name: input.name || existing.name || undefined,
+      picture: input.picture || existing.picture || undefined
+    }
+  });
+  return { user: updated, isNewUser: false };
+}
+
+authRoutes.post('/login', async (req, res) => {
   const parsed = bodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid input', details: parsed.error.flatten() });
     return;
   }
 
-  const { user, isNewUser } = getOrCreateRegisteredUser({
-    email: parsed.data.email,
-    role: parsed.data.role,
-    authProvider: 'email'
-  });
-
-  const token = jwt.sign(
-    {
-      sub: parsed.data.email,
-      email: parsed.data.email,
-      role: parsed.data.role
-    },
-    env.jwtSecret,
-    { expiresIn: '12h' }
-  );
-
-  res.json({
-    token,
-    user: {
+  try {
+    const { user, isNewUser } = await upsertAuthUser({
       email: parsed.data.email,
       role: parsed.data.role,
-      authProvider: 'email',
-      isNewUserHint: isNewUser,
-      onboardingCompleted: user.onboardingCompleted
-    }
-  });
+      authProvider: 'email'
+    });
+
+    const token = jwt.sign(
+      {
+        sub: parsed.data.email,
+        email: parsed.data.email,
+        role: parsed.data.role
+      },
+      env.jwtSecret,
+      { expiresIn: '12h' }
+    );
+
+    res.json({
+      token,
+      user: {
+        email: parsed.data.email,
+        role: parsed.data.role,
+        authProvider: 'email',
+        isNewUserHint: isNewUser,
+        onboardingCompleted: user.onboardingCompleted
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'No se pudo iniciar sesión.' });
+  }
 });
 
 authRoutes.post('/google', async (req, res) => {
@@ -176,13 +125,14 @@ authRoutes.post('/google', async (req, res) => {
   }
 
   try {
-    const verifyResponse = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(parsed.data.idToken)}`);
+    const verifyResponse = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(parsed.data.idToken)}`
+    );
     const payload = (await verifyResponse.json()) as {
       aud?: string;
       email?: string;
       email_verified?: string;
       sub?: string;
-      exp?: string;
       name?: string;
       picture?: string;
     };
@@ -203,10 +153,12 @@ authRoutes.post('/google', async (req, res) => {
     }
 
     const role = resolveRoleForGoogleEmail(payload.email);
-    const { user, isNewUser } = getOrCreateRegisteredUser({
+    const { user, isNewUser } = await upsertAuthUser({
       email: payload.email,
       role,
-      authProvider: 'google'
+      authProvider: 'google',
+      name: payload.name,
+      picture: payload.picture
     });
 
     const token = jwt.sign(
@@ -240,39 +192,53 @@ authRoutes.post('/google', async (req, res) => {
   }
 });
 
-authRoutes.get('/session', requireAuth, (req, res) => {
+authRoutes.get('/session', requireAuth, async (req, res) => {
   const email = (req.authUser?.email || req.authUser?.sub || '').trim().toLowerCase();
-  const existing = email && email.includes('@') ? findRegisteredUser(email) : null;
+  const existing = email && email.includes('@') ? await prisma.user.findUnique({ where: { email } }) : null;
   res.json({
     user: {
       email,
-      role: req.authUser?.role || 'fan',
-      authProvider: req.authUser?.authProvider || 'email',
-      name: req.authUser?.name || '',
-      picture: req.authUser?.picture || '',
-      canAccessDashboard: req.authUser?.role === 'artist',
+      role: existing ? fromPrismaRole(existing.role) : req.authUser?.role || 'fan',
+      authProvider: (existing?.authProvider as AuthProvider | undefined) || req.authUser?.authProvider || 'email',
+      name: existing?.name || req.authUser?.name || '',
+      picture: existing?.picture || req.authUser?.picture || '',
+      canAccessDashboard: (existing ? fromPrismaRole(existing.role) : req.authUser?.role) === 'artist',
       isRegistered: Boolean(existing),
       onboardingCompleted: existing?.onboardingCompleted ?? false
     }
   });
 });
 
-authRoutes.post('/onboarding/complete', requireAuth, (req, res) => {
+authRoutes.post('/onboarding/complete', requireAuth, async (req, res) => {
   const email = (req.authUser?.email || req.authUser?.sub || '').trim().toLowerCase();
   if (!email || !email.includes('@')) {
     res.status(400).json({ error: 'No se pudo resolver el email autenticado.' });
     return;
   }
-  const updated = markOnboardingCompleted(email);
-  if (!updated) {
-    const created = getOrCreateRegisteredUser({
-      email,
-      role: normalizeRole(req.authUser?.role),
-      authProvider: req.authUser?.authProvider || 'email'
+
+  try {
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (!existing) {
+      await prisma.user.create({
+        data: {
+          email,
+          role: toPrismaRole(normalizeRole(req.authUser?.role)),
+          authProvider: req.authUser?.authProvider || 'email',
+          onboardingCompleted: true,
+          name: req.authUser?.name || undefined,
+          picture: req.authUser?.picture || undefined
+        }
+      });
+      res.status(201).json({ ok: true, onboardingCompleted: true, isNewUserHint: true });
+      return;
+    }
+
+    await prisma.user.update({
+      where: { email },
+      data: { onboardingCompleted: true }
     });
-    markOnboardingCompleted(email);
-    res.status(201).json({ ok: true, onboardingCompleted: true, isNewUserHint: created.isNewUser });
-    return;
+    res.json({ ok: true, onboardingCompleted: true, isNewUserHint: false });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'No se pudo completar onboarding.' });
   }
-  res.json({ ok: true, onboardingCompleted: true });
 });

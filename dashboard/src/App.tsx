@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   type ConcertItem,
   createConcert,
@@ -11,15 +11,24 @@ import {
   deleteStoreItem,
   getConcerts,
   getLives,
+  getLiveSubscriptions,
+  getRegisteredUsers,
   getRewardsConfig,
+  getSalesOverview,
   getSession,
   getStoreItems,
   loginWithGoogle,
   logout,
   setTiers,
   setXpActions,
+  updateConcert,
+  updateLive,
   updateReward,
+  updateStoreItem,
   type LiveItem,
+  type LiveSubscriptionItem,
+  type DashboardSalesOverview,
+  type RegisteredUserItem,
   type RewardConfigItem,
   type RewardsConfig,
   type StoreItem,
@@ -44,7 +53,8 @@ declare global {
   }
 }
 
-type Tab = 'store' | 'concerts' | 'lives' | 'rewards';
+type Tab = 'store' | 'concerts' | 'lives' | 'rewards' | 'sales' | 'audience';
+type SalesScope = 'all' | 'store' | 'concert_sales' | 'concert_registrations';
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
@@ -60,7 +70,7 @@ const emptyConcertDraft: Omit<ConcertItem, 'id'> = {
   title: '',
   venue: '',
   city: '',
-  startsAt: new Date().toISOString().slice(0, 16),
+  startsAt: new Date().toISOString(),
   priceEur: 0,
   ticketUrl: '',
   isActive: true
@@ -69,7 +79,7 @@ const emptyConcertDraft: Omit<ConcertItem, 'id'> = {
 const emptyLiveDraft: Omit<LiveItem, 'id'> = {
   artist: 'Belako',
   title: '',
-  startsAt: new Date().toISOString().slice(0, 16),
+  startsAt: new Date().toISOString(),
   viewers: 0,
   rewardHint: '',
   genre: 'Alternative',
@@ -86,6 +96,9 @@ const emptyRewardDraft: Omit<RewardConfigItem, 'id'> = {
   active: true
 };
 
+const TITLE_MAX_CHARS = 56;
+const SALES_PAGE_SIZE = 10;
+
 export function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -97,20 +110,75 @@ export function App() {
   const [concerts, setConcerts] = useState<ConcertItem[]>([]);
   const [lives, setLives] = useState<LiveItem[]>([]);
   const [rewardsConfig, setRewardsConfig] = useState<RewardsConfig | null>(null);
+  const [salesOverview, setSalesOverview] = useState<DashboardSalesOverview | null>(null);
+  const [registeredUsers, setRegisteredUsers] = useState<RegisteredUserItem[]>([]);
+  const [liveSubscriptions, setLiveSubscriptions] = useState<LiveSubscriptionItem[]>([]);
+  const [salesDateFrom, setSalesDateFrom] = useState('');
+  const [salesDateTo, setSalesDateTo] = useState('');
+  const [salesStatusFilter, setSalesStatusFilter] = useState('all');
+  const [registrationStatusFilter, setRegistrationStatusFilter] = useState('all');
+  const [salesScopeFilter, setSalesScopeFilter] = useState<SalesScope>('all');
+  const [allSalesPage, setAllSalesPage] = useState(1);
 
   const [storeDraft, setStoreDraft] = useState(emptyStoreDraft);
+  const [storeImageError, setStoreImageError] = useState('');
+  const [editingStoreId, setEditingStoreId] = useState<string | null>(null);
+  const [storeEditDraft, setStoreEditDraft] = useState<Omit<StoreItem, 'id'>>(emptyStoreDraft);
+  const [storeEditImageError, setStoreEditImageError] = useState('');
+  const storeEditRef = useRef<HTMLElement | null>(null);
   const [concertDraft, setConcertDraft] = useState(emptyConcertDraft);
+  const [editingConcertId, setEditingConcertId] = useState<string | null>(null);
+  const [concertEditDraft, setConcertEditDraft] = useState<Omit<ConcertItem, 'id'>>(emptyConcertDraft);
+  const concertEditRef = useRef<HTMLElement | null>(null);
   const [liveDraft, setLiveDraft] = useState(emptyLiveDraft);
+  const [editingLiveId, setEditingLiveId] = useState<string | null>(null);
+  const [liveEditDraft, setLiveEditDraft] = useState<Omit<LiveItem, 'id'>>(emptyLiveDraft);
+  const liveEditRef = useRef<HTMLElement | null>(null);
   const [rewardDraft, setRewardDraft] = useState(emptyRewardDraft);
 
   const artistDenied = session && session.role !== 'artist';
 
+  function handleStoreImageUpload(
+    file: File | undefined,
+    onSuccess: (imageUrl: string) => void,
+    onError: (message: string) => void
+  ) {
+    if (!file) {
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      onError('Selecciona una imagen válida (JPG, PNG, WEBP).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      onError('La imagen supera 5MB. Usa una versión más ligera.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (!result) {
+        onError('No se pudo leer la imagen.');
+        return;
+      }
+      onError('');
+      onSuccess(result);
+    };
+    reader.onerror = () => {
+      onError('Error al procesar la imagen.');
+    };
+    reader.readAsDataURL(file);
+  }
+
   async function refreshAll() {
-    const [storeResult, concertResult, livesResult, rewardsResult] = await Promise.all([
+    const [storeResult, concertResult, livesResult, rewardsResult, salesResult, usersResult, subscriptionsResult] = await Promise.all([
       getStoreItems(),
       getConcerts(),
       getLives(),
-      getRewardsConfig()
+      getRewardsConfig(),
+      getSalesOverview(),
+      getRegisteredUsers(),
+      getLiveSubscriptions()
     ]);
 
     if (storeResult.ok && storeResult.data) {
@@ -124,6 +192,15 @@ export function App() {
     }
     if (rewardsResult.ok && rewardsResult.data) {
       setRewardsConfig(rewardsResult.data);
+    }
+    if (salesResult.ok && salesResult.data) {
+      setSalesOverview(salesResult.data);
+    }
+    if (usersResult.ok && usersResult.data) {
+      setRegisteredUsers(usersResult.data);
+    }
+    if (subscriptionsResult.ok && subscriptionsResult.data) {
+      setLiveSubscriptions(subscriptionsResult.data);
     }
   }
 
@@ -151,6 +228,24 @@ export function App() {
     }
     void refreshAll();
   }, [session]);
+
+  useEffect(() => {
+    if (tab === 'store' && editingStoreId) {
+      storeEditRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [tab, editingStoreId]);
+
+  useEffect(() => {
+    if (tab === 'concerts' && editingConcertId) {
+      concertEditRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [tab, editingConcertId]);
+
+  useEffect(() => {
+    if (tab === 'lives' && editingLiveId) {
+      liveEditRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [tab, editingLiveId]);
 
   function runGoogleLogin() {
     setAuthError('');
@@ -199,6 +294,97 @@ export function App() {
   const sortedTiers = useMemo(
     () => [...(rewardsConfig?.tiers || [])].sort((a, b) => a.sortOrder - b.sortOrder),
     [rewardsConfig?.tiers]
+  );
+  const allSales = useMemo(() => salesOverview?.sales || [], [salesOverview?.sales]);
+  const salesStatusOptions = useMemo(
+    () => ['all', ...Array.from(new Set(allSales.map((sale) => sale.status)))],
+    [allSales]
+  );
+  const registrationStatusOptions = useMemo(
+    () => ['all', ...Array.from(new Set((salesOverview?.concertRegistrations || []).map((item) => item.status)))],
+    [salesOverview?.concertRegistrations]
+  );
+  const filteredSales = useMemo(
+    () =>
+      allSales.filter((sale) => {
+        const createdAt = new Date(sale.createdAt);
+        if (salesDateFrom) {
+          const start = new Date(`${salesDateFrom}T00:00:00`);
+          if (createdAt < start) {
+            return false;
+          }
+        }
+        if (salesDateTo) {
+          const end = new Date(`${salesDateTo}T23:59:59`);
+          if (createdAt > end) {
+            return false;
+          }
+        }
+        if (salesStatusFilter !== 'all' && sale.status !== salesStatusFilter) {
+          return false;
+        }
+        return true;
+      }),
+    [allSales, salesDateFrom, salesDateTo, salesStatusFilter]
+  );
+  const storeSales = useMemo(() => filteredSales.filter((sale) => sale.itemType === 'merch'), [filteredSales]);
+  const concertSales = useMemo(() => filteredSales.filter((sale) => sale.itemType === 'ticket'), [filteredSales]);
+  const filteredRegistrations = useMemo(
+    () =>
+      (salesOverview?.concertRegistrations || []).filter((registration) => {
+        const createdAt = new Date(registration.createdAt);
+        if (salesDateFrom) {
+          const start = new Date(`${salesDateFrom}T00:00:00`);
+          if (createdAt < start) {
+            return false;
+          }
+        }
+        if (salesDateTo) {
+          const end = new Date(`${salesDateTo}T23:59:59`);
+          if (createdAt > end) {
+            return false;
+          }
+        }
+        if (registrationStatusFilter !== 'all' && registration.status !== registrationStatusFilter) {
+          return false;
+        }
+        return true;
+      }),
+    [registrationStatusFilter, salesDateFrom, salesDateTo, salesOverview?.concertRegistrations]
+  );
+  const filteredRevenue = useMemo(
+    () =>
+      filteredSales
+        .filter((sale) => sale.status === 'PAID')
+        .reduce((sum, sale) => sum + sale.amountEur, 0),
+    [filteredSales]
+  );
+  const salesScopeOptions: Array<{ value: SalesScope; label: string }> = [
+    { value: 'all', label: 'Todo' },
+    { value: 'store', label: 'Tienda' },
+    { value: 'concert_sales', label: 'Conciertos (ventas)' },
+    { value: 'concert_registrations', label: 'Registro de concierto' }
+  ];
+  const scopedAllSales = useMemo(() => {
+    if (salesScopeFilter === 'store') {
+      return storeSales;
+    }
+    if (salesScopeFilter === 'concert_sales') {
+      return concertSales;
+    }
+    if (salesScopeFilter === 'concert_registrations') {
+      return [];
+    }
+    return filteredSales;
+  }, [concertSales, filteredSales, salesScopeFilter, storeSales]);
+
+  useEffect(() => {
+    setAllSalesPage(1);
+  }, [salesDateFrom, salesDateTo, salesStatusFilter, registrationStatusFilter, salesScopeFilter]);
+
+  const paginatedAllSales = useMemo(
+    () => paginateList(scopedAllSales, allSalesPage, SALES_PAGE_SIZE),
+    [scopedAllSales, allSalesPage]
   );
 
   if (authLoading) {
@@ -266,6 +452,8 @@ export function App() {
         <button className={tab === 'concerts' ? 'active' : ''} onClick={() => setTab('concerts')}>Conciertos</button>
         <button className={tab === 'lives' ? 'active' : ''} onClick={() => setTab('lives')}>Lives</button>
         <button className={tab === 'rewards' ? 'active' : ''} onClick={() => setTab('rewards')}>Recompensas</button>
+        <button className={tab === 'sales' ? 'active' : ''} onClick={() => setTab('sales')}>Ventas</button>
+        <button className={tab === 'audience' ? 'active' : ''} onClick={() => setTab('audience')}>Usuarios</button>
       </nav>
 
       {status ? <p className="status">{status}</p> : null}
@@ -276,16 +464,37 @@ export function App() {
           <div className="grid-two">
             <article className="card">
               <h3>Nuevo producto</h3>
-              <input placeholder="Nombre" value={storeDraft.name} onChange={(e) => setStoreDraft((p) => ({ ...p, name: e.target.value }))} />
+              <input maxLength={90} placeholder="Nombre" value={storeDraft.name} onChange={(e) => setStoreDraft((p) => ({ ...p, name: e.target.value }))} />
               <input type="number" step="0.01" placeholder="Precio EUR" value={storeDraft.fiatPrice || ''} onChange={(e) => setStoreDraft((p) => ({ ...p, fiatPrice: Number(e.target.value) }))} />
               <input placeholder="Image URL" value={storeDraft.imageUrl} onChange={(e) => setStoreDraft((p) => ({ ...p, imageUrl: e.target.value }))} />
+              <label className="ghost">
+                Subir imagen (móvil/desktop)
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) =>
+                    handleStoreImageUpload(
+                      e.target.files?.[0],
+                      (imageUrl) => setStoreDraft((p) => ({ ...p, imageUrl })),
+                      setStoreImageError
+                    )
+                  }
+                />
+              </label>
+              {storeDraft.imageUrl ? <img src={storeDraft.imageUrl} alt="Preview producto" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 8 }} /> : null}
+              {storeImageError ? <p className="error">{storeImageError}</p> : null}
               <button onClick={async () => {
+                if (!storeDraft.imageUrl) {
+                  setStoreImageError('Añade una imagen por URL o subida.');
+                  return;
+                }
                 const result = await createStoreItem(storeDraft);
                 if (!result.ok) {
                   setStatus(result.error || 'No se pudo crear producto.');
                   return;
                 }
                 setStoreDraft(emptyStoreDraft);
+                setStoreImageError('');
                 setStatus('Producto creado.');
                 await refreshAll();
               }}>Añadir producto</button>
@@ -295,24 +504,130 @@ export function App() {
               <div className="list">
                 {storeItems.map((item) => (
                   <div className="row-item" key={item.id}>
-                    <div>
-                      <strong>{item.name}</strong>
+                    <div className="row-item-main">
+                      <strong className="row-item-title" title={item.name}>{truncateText(item.name, TITLE_MAX_CHARS)}</strong>
                       <small>€{item.fiatPrice.toFixed(2)}</small>
                     </div>
-                    <button className="ghost" onClick={async () => {
-                      const result = await deleteStoreItem(item.id);
-                      if (!result.ok) {
-                        setStatus(result.error || 'No se pudo eliminar producto.');
-                        return;
-                      }
-                      setStatus('Producto eliminado.');
-                      await refreshAll();
-                    }}>Eliminar</button>
+                    <div className="topbar-actions">
+                      <button
+                        className="ghost btn-xs"
+                        onClick={() => {
+                          setEditingStoreId(item.id);
+                          setStoreEditDraft({
+                            name: item.name,
+                            fiatPrice: item.fiatPrice,
+                            imageUrl: item.imageUrl,
+                            limited: item.limited,
+                            isActive: item.isActive
+                          });
+                          setStoreEditImageError('');
+                        }}
+                      >
+                        Editar
+                      </button>
+                      <button className="ghost btn-xs" onClick={async () => {
+                        const result = await deleteStoreItem(item.id);
+                        if (!result.ok) {
+                          setStatus(result.error || 'No se pudo eliminar producto.');
+                          return;
+                        }
+                        if (editingStoreId === item.id) {
+                          setEditingStoreId(null);
+                        }
+                        setStatus('Producto eliminado.');
+                        await refreshAll();
+                      }}>Eliminar</button>
+                    </div>
                   </div>
                 ))}
               </div>
             </article>
           </div>
+          {editingStoreId ? (
+            <article className="card" ref={storeEditRef}>
+              <h3>Editar producto</h3>
+              <input
+                maxLength={90}
+                placeholder="Nombre"
+                value={storeEditDraft.name}
+                onChange={(e) => setStoreEditDraft((p) => ({ ...p, name: e.target.value }))}
+              />
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Precio EUR"
+                value={storeEditDraft.fiatPrice || ''}
+                onChange={(e) => setStoreEditDraft((p) => ({ ...p, fiatPrice: Number(e.target.value) }))}
+              />
+              <input
+                placeholder="Image URL"
+                value={storeEditDraft.imageUrl}
+                onChange={(e) => setStoreEditDraft((p) => ({ ...p, imageUrl: e.target.value }))}
+              />
+              <label className="ghost">
+                Subir imagen (móvil/desktop)
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) =>
+                    handleStoreImageUpload(
+                      e.target.files?.[0],
+                      (imageUrl) => setStoreEditDraft((p) => ({ ...p, imageUrl })),
+                      setStoreEditImageError
+                    )
+                  }
+                />
+              </label>
+              {storeEditDraft.imageUrl ? <img src={storeEditDraft.imageUrl} alt="Preview edición producto" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 8 }} /> : null}
+              {storeEditImageError ? <p className="error">{storeEditImageError}</p> : null}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={storeEditDraft.limited}
+                  onChange={(e) => setStoreEditDraft((p) => ({ ...p, limited: e.target.checked }))}
+                /> Producto limitado
+              </label>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={storeEditDraft.isActive}
+                  onChange={(e) => setStoreEditDraft((p) => ({ ...p, isActive: e.target.checked }))}
+                /> Activo
+              </label>
+              <div className="topbar-actions">
+                <button
+                  onClick={async () => {
+                    const result = await updateStoreItem(editingStoreId, {
+                      name: storeEditDraft.name,
+                      fiatPrice: storeEditDraft.fiatPrice,
+                      imageUrl: storeEditDraft.imageUrl,
+                      limited: storeEditDraft.limited,
+                      isActive: storeEditDraft.isActive
+                    });
+                    if (!result.ok) {
+                      setStatus(result.error || 'No se pudo actualizar producto.');
+                      return;
+                    }
+                    setEditingStoreId(null);
+                    setStoreEditImageError('');
+                    setStatus('Producto actualizado.');
+                    await refreshAll();
+                  }}
+                >
+                  Guardar cambios
+                </button>
+                <button
+                  className="ghost"
+                  onClick={() => {
+                    setEditingStoreId(null);
+                    setStoreEditImageError('');
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </article>
+          ) : null}
         </section>
       ) : null}
 
@@ -322,13 +637,24 @@ export function App() {
           <div className="grid-two">
             <article className="card">
               <h3>Nuevo concierto</h3>
-              <input placeholder="Título" value={concertDraft.title} onChange={(e) => setConcertDraft((p) => ({ ...p, title: e.target.value }))} />
+              <input maxLength={100} placeholder="Título" value={concertDraft.title} onChange={(e) => setConcertDraft((p) => ({ ...p, title: e.target.value }))} />
               <input placeholder="Sala" value={concertDraft.venue} onChange={(e) => setConcertDraft((p) => ({ ...p, venue: e.target.value }))} />
               <input placeholder="Ciudad" value={concertDraft.city} onChange={(e) => setConcertDraft((p) => ({ ...p, city: e.target.value }))} />
               <input type="datetime-local" value={concertDraft.startsAt.slice(0, 16)} onChange={(e) => setConcertDraft((p) => ({ ...p, startsAt: new Date(e.target.value).toISOString() }))} />
               <input type="number" step="0.01" placeholder="Precio" value={concertDraft.priceEur || ''} onChange={(e) => setConcertDraft((p) => ({ ...p, priceEur: Number(e.target.value) }))} />
+              <input placeholder="Ticket URL" value={concertDraft.ticketUrl || ''} onChange={(e) => setConcertDraft((p) => ({ ...p, ticketUrl: e.target.value }))} />
+              <label>
+                <input
+                  type="checkbox"
+                  checked={concertDraft.isActive}
+                  onChange={(e) => setConcertDraft((p) => ({ ...p, isActive: e.target.checked }))}
+                /> Activo
+              </label>
               <button onClick={async () => {
-                const result = await createConcert(concertDraft);
+                const result = await createConcert({
+                  ...concertDraft,
+                  startsAt: normalizeDateForApi(concertDraft.startsAt)
+                });
                 if (!result.ok) {
                   setStatus(result.error || 'No se pudo crear concierto.');
                   return;
@@ -343,24 +669,116 @@ export function App() {
               <div className="list">
                 {concerts.map((item) => (
                   <div className="row-item" key={item.id}>
-                    <div>
-                      <strong>{item.title}</strong>
+                    <div className="row-item-main">
+                      <strong className="row-item-title" title={item.title}>{truncateText(item.title, TITLE_MAX_CHARS)}</strong>
                       <small>{new Date(item.startsAt).toLocaleString('es-ES')}</small>
                     </div>
-                    <button className="ghost" onClick={async () => {
-                      const result = await deleteConcert(item.id);
-                      if (!result.ok) {
-                        setStatus(result.error || 'No se pudo eliminar concierto.');
-                        return;
-                      }
-                      setStatus('Concierto eliminado.');
-                      await refreshAll();
-                    }}>Eliminar</button>
+                    <div className="topbar-actions">
+                      <button
+                        className="ghost btn-xs"
+                        onClick={() => {
+                          setEditingConcertId(item.id);
+                          setConcertEditDraft({
+                            title: item.title,
+                            venue: item.venue,
+                            city: item.city,
+                            startsAt: item.startsAt,
+                            priceEur: item.priceEur,
+                            ticketUrl: item.ticketUrl || '',
+                            isActive: item.isActive
+                          });
+                        }}
+                      >
+                        Editar
+                      </button>
+                      <button className="ghost btn-xs" onClick={async () => {
+                        const result = await deleteConcert(item.id);
+                        if (!result.ok) {
+                          setStatus(result.error || 'No se pudo eliminar concierto.');
+                          return;
+                        }
+                        if (editingConcertId === item.id) {
+                          setEditingConcertId(null);
+                        }
+                        setStatus('Concierto eliminado.');
+                        await refreshAll();
+                      }}>Eliminar</button>
+                    </div>
                   </div>
                 ))}
               </div>
             </article>
           </div>
+          {editingConcertId ? (
+            <article className="card" ref={concertEditRef}>
+              <h3>Editar concierto</h3>
+              <input
+                maxLength={100}
+                placeholder="Título"
+                value={concertEditDraft.title}
+                onChange={(e) => setConcertEditDraft((p) => ({ ...p, title: e.target.value }))}
+              />
+              <input
+                placeholder="Sala"
+                value={concertEditDraft.venue}
+                onChange={(e) => setConcertEditDraft((p) => ({ ...p, venue: e.target.value }))}
+              />
+              <input
+                placeholder="Ciudad"
+                value={concertEditDraft.city}
+                onChange={(e) => setConcertEditDraft((p) => ({ ...p, city: e.target.value }))}
+              />
+              <input
+                type="datetime-local"
+                value={toDateTimeLocalInput(concertEditDraft.startsAt)}
+                onChange={(e) => setConcertEditDraft((p) => ({ ...p, startsAt: normalizeDateForApi(e.target.value) }))}
+              />
+              <input
+                type="number"
+                step="0.01"
+                placeholder="Precio"
+                value={concertEditDraft.priceEur || ''}
+                onChange={(e) => setConcertEditDraft((p) => ({ ...p, priceEur: Number(e.target.value) }))}
+              />
+              <input
+                placeholder="Ticket URL"
+                value={concertEditDraft.ticketUrl || ''}
+                onChange={(e) => setConcertEditDraft((p) => ({ ...p, ticketUrl: e.target.value }))}
+              />
+              <label>
+                <input
+                  type="checkbox"
+                  checked={concertEditDraft.isActive}
+                  onChange={(e) => setConcertEditDraft((p) => ({ ...p, isActive: e.target.checked }))}
+                /> Activo
+              </label>
+              <div className="topbar-actions">
+                <button
+                  onClick={async () => {
+                    const result = await updateConcert(editingConcertId, {
+                      title: concertEditDraft.title,
+                      venue: concertEditDraft.venue,
+                      city: concertEditDraft.city,
+                      startsAt: normalizeDateForApi(concertEditDraft.startsAt),
+                      priceEur: concertEditDraft.priceEur,
+                      ticketUrl: concertEditDraft.ticketUrl || '',
+                      isActive: concertEditDraft.isActive
+                    });
+                    if (!result.ok) {
+                      setStatus(result.error || 'No se pudo actualizar concierto.');
+                      return;
+                    }
+                    setEditingConcertId(null);
+                    setStatus('Concierto actualizado.');
+                    await refreshAll();
+                  }}
+                >
+                  Guardar cambios
+                </button>
+                <button className="ghost" onClick={() => setEditingConcertId(null)}>Cancelar</button>
+              </div>
+            </article>
+          ) : null}
         </section>
       ) : null}
 
@@ -370,13 +788,26 @@ export function App() {
           <div className="grid-two">
             <article className="card">
               <h3>Nuevo live</h3>
-              <input placeholder="Título" value={liveDraft.title} onChange={(e) => setLiveDraft((p) => ({ ...p, title: e.target.value }))} />
+              <input placeholder="Artista" value={liveDraft.artist} onChange={(e) => setLiveDraft((p) => ({ ...p, artist: e.target.value }))} />
+              <input maxLength={100} placeholder="Título" value={liveDraft.title} onChange={(e) => setLiveDraft((p) => ({ ...p, title: e.target.value }))} />
               <input placeholder="Género" value={liveDraft.genre} onChange={(e) => setLiveDraft((p) => ({ ...p, genre: e.target.value }))} />
+              <input placeholder="Color class (stream-a...)" value={liveDraft.colorClass} onChange={(e) => setLiveDraft((p) => ({ ...p, colorClass: e.target.value }))} />
+              <input type="number" placeholder="Viewers" value={liveDraft.viewers || 0} onChange={(e) => setLiveDraft((p) => ({ ...p, viewers: Number(e.target.value) }))} />
               <input placeholder="Hint recompensa" value={liveDraft.rewardHint} onChange={(e) => setLiveDraft((p) => ({ ...p, rewardHint: e.target.value }))} />
               <input placeholder="Youtube URL" value={liveDraft.youtubeUrl || ''} onChange={(e) => setLiveDraft((p) => ({ ...p, youtubeUrl: e.target.value }))} />
               <input type="datetime-local" value={liveDraft.startsAt.slice(0, 16)} onChange={(e) => setLiveDraft((p) => ({ ...p, startsAt: new Date(e.target.value).toISOString() }))} />
+              <label>
+                <input
+                  type="checkbox"
+                  checked={liveDraft.isActive}
+                  onChange={(e) => setLiveDraft((p) => ({ ...p, isActive: e.target.checked }))}
+                /> Activo
+              </label>
               <button onClick={async () => {
-                const result = await createLive(liveDraft);
+                const result = await createLive({
+                  ...liveDraft,
+                  startsAt: normalizeDateForApi(liveDraft.startsAt)
+                });
                 if (!result.ok) {
                   setStatus(result.error || 'No se pudo crear live.');
                   return;
@@ -391,24 +822,129 @@ export function App() {
               <div className="list">
                 {lives.map((item) => (
                   <div className="row-item" key={item.id}>
-                    <div>
-                      <strong>{item.title}</strong>
+                    <div className="row-item-main">
+                      <strong className="row-item-title" title={item.title}>{truncateText(item.title, TITLE_MAX_CHARS)}</strong>
                       <small>{new Date(item.startsAt).toLocaleString('es-ES')}</small>
                     </div>
-                    <button className="ghost" onClick={async () => {
-                      const result = await deleteLive(item.id);
-                      if (!result.ok) {
-                        setStatus(result.error || 'No se pudo eliminar live.');
-                        return;
-                      }
-                      setStatus('Live eliminado.');
-                      await refreshAll();
-                    }}>Eliminar</button>
+                    <div className="topbar-actions">
+                      <button
+                        className="ghost btn-xs"
+                        onClick={() => {
+                          setEditingLiveId(item.id);
+                          setLiveEditDraft({
+                            artist: item.artist,
+                            title: item.title,
+                            startsAt: item.startsAt,
+                            viewers: item.viewers,
+                            rewardHint: item.rewardHint,
+                            genre: item.genre,
+                            colorClass: item.colorClass,
+                            youtubeUrl: item.youtubeUrl || '',
+                            isActive: item.isActive
+                          });
+                        }}
+                      >
+                        Editar
+                      </button>
+                      <button className="ghost btn-xs" onClick={async () => {
+                        const result = await deleteLive(item.id);
+                        if (!result.ok) {
+                          setStatus(result.error || 'No se pudo eliminar live.');
+                          return;
+                        }
+                        if (editingLiveId === item.id) {
+                          setEditingLiveId(null);
+                        }
+                        setStatus('Live eliminado.');
+                        await refreshAll();
+                      }}>Eliminar</button>
+                    </div>
                   </div>
                 ))}
               </div>
             </article>
           </div>
+          {editingLiveId ? (
+            <article className="card" ref={liveEditRef}>
+              <h3>Editar live</h3>
+              <input
+                maxLength={100}
+                placeholder="Artista"
+                value={liveEditDraft.artist}
+                onChange={(e) => setLiveEditDraft((p) => ({ ...p, artist: e.target.value }))}
+              />
+              <input
+                placeholder="Título"
+                value={liveEditDraft.title}
+                onChange={(e) => setLiveEditDraft((p) => ({ ...p, title: e.target.value }))}
+              />
+              <input
+                placeholder="Género"
+                value={liveEditDraft.genre}
+                onChange={(e) => setLiveEditDraft((p) => ({ ...p, genre: e.target.value }))}
+              />
+              <input
+                placeholder="Color class (stream-a...)"
+                value={liveEditDraft.colorClass}
+                onChange={(e) => setLiveEditDraft((p) => ({ ...p, colorClass: e.target.value }))}
+              />
+              <input
+                type="number"
+                placeholder="Viewers"
+                value={liveEditDraft.viewers || 0}
+                onChange={(e) => setLiveEditDraft((p) => ({ ...p, viewers: Number(e.target.value) }))}
+              />
+              <input
+                placeholder="Hint recompensa"
+                value={liveEditDraft.rewardHint}
+                onChange={(e) => setLiveEditDraft((p) => ({ ...p, rewardHint: e.target.value }))}
+              />
+              <input
+                placeholder="Youtube URL"
+                value={liveEditDraft.youtubeUrl || ''}
+                onChange={(e) => setLiveEditDraft((p) => ({ ...p, youtubeUrl: e.target.value }))}
+              />
+              <input
+                type="datetime-local"
+                value={toDateTimeLocalInput(liveEditDraft.startsAt)}
+                onChange={(e) => setLiveEditDraft((p) => ({ ...p, startsAt: normalizeDateForApi(e.target.value) }))}
+              />
+              <label>
+                <input
+                  type="checkbox"
+                  checked={liveEditDraft.isActive}
+                  onChange={(e) => setLiveEditDraft((p) => ({ ...p, isActive: e.target.checked }))}
+                /> Activo
+              </label>
+              <div className="topbar-actions">
+                <button
+                  onClick={async () => {
+                    const result = await updateLive(editingLiveId, {
+                      artist: liveEditDraft.artist,
+                      title: liveEditDraft.title,
+                      startsAt: normalizeDateForApi(liveEditDraft.startsAt),
+                      viewers: liveEditDraft.viewers,
+                      rewardHint: liveEditDraft.rewardHint,
+                      genre: liveEditDraft.genre,
+                      colorClass: liveEditDraft.colorClass,
+                      youtubeUrl: liveEditDraft.youtubeUrl || '',
+                      isActive: liveEditDraft.isActive
+                    });
+                    if (!result.ok) {
+                      setStatus(result.error || 'No se pudo actualizar live.');
+                      return;
+                    }
+                    setEditingLiveId(null);
+                    setStatus('Live actualizado.');
+                    await refreshAll();
+                  }}
+                >
+                  Guardar cambios
+                </button>
+                <button className="ghost" onClick={() => setEditingLiveId(null)}>Cancelar</button>
+              </div>
+            </article>
+          ) : null}
         </section>
       ) : null}
 
@@ -555,6 +1091,227 @@ export function App() {
           </div>
         </section>
       ) : null}
+
+      {tab === 'sales' ? (
+        <section className="panel">
+          <h2>Ventas y registros de conciertos</h2>
+          <article className="card">
+            <h3>Filtros</h3>
+            <div className="sales-filter-row">
+              <label>
+                Desde
+                <input type="date" value={salesDateFrom} onChange={(e) => setSalesDateFrom(e.target.value)} />
+              </label>
+              <label>
+                Hasta
+                <input type="date" value={salesDateTo} onChange={(e) => setSalesDateTo(e.target.value)} />
+              </label>
+              <label>
+                Estado venta
+                <select value={salesStatusFilter} onChange={(e) => setSalesStatusFilter(e.target.value)}>
+                  {salesStatusOptions.map((statusOption) => (
+                    <option key={statusOption} value={statusOption}>{statusOption === 'all' ? 'Todos' : statusOption}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Estado registro concierto
+                <select value={registrationStatusFilter} onChange={(e) => setRegistrationStatusFilter(e.target.value)}>
+                  {registrationStatusOptions.map((statusOption) => (
+                    <option key={statusOption} value={statusOption}>{statusOption === 'all' ? 'Todos' : statusOption}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Tipo de registro
+                <select value={salesScopeFilter} onChange={(e) => setSalesScopeFilter(e.target.value as SalesScope)}>
+                  {salesScopeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="ghost btn-xs"
+                onClick={() => {
+                  setSalesDateFrom('');
+                  setSalesDateTo('');
+                  setSalesStatusFilter('all');
+                  setRegistrationStatusFilter('all');
+                  setSalesScopeFilter('all');
+                }}
+              >
+                Limpiar filtros
+              </button>
+            </div>
+          </article>
+          <div className="grid-two">
+            <article className="card">
+              <h3>Resumen filtrado</h3>
+              <div className="list">
+                <div className="row-item"><small>Ventas totales</small><strong>{filteredSales.length}</strong></div>
+                <div className="row-item"><small>Ventas pagadas</small><strong>{filteredSales.filter((sale) => sale.status === 'PAID').length}</strong></div>
+                <div className="row-item"><small>Ventas pendientes</small><strong>{filteredSales.filter((sale) => sale.status === 'PENDING').length}</strong></div>
+                <div className="row-item"><small>Merch vendido</small><strong>{storeSales.length}</strong></div>
+                <div className="row-item"><small>Entradas vendidas</small><strong>{concertSales.length}</strong></div>
+                <div className="row-item"><small>Facturación</small><strong>€{filteredRevenue.toFixed(2)}</strong></div>
+                <div className="row-item"><small>Registros a conciertos</small><strong>{filteredRegistrations.length}</strong></div>
+              </div>
+            </article>
+            <article className="card">
+              <small>El detalle por bloques (tienda/conciertos/registros) está oculto para simplificar esta vista.</small>
+            </article>
+          </div>
+
+          <article className="card">
+            <div className="section-head">
+              <h3>Todas las transacciones ({scopedAllSales.length})</h3>
+              <button
+                className="ghost btn-xs"
+                onClick={() =>
+                  exportCsvFile(
+                    'transacciones-filtradas.csv',
+                    ['id', 'product', 'item_type', 'customer', 'amount_eur', 'status', 'payment_ref', 'created_at'],
+                    scopedAllSales.map((sale) => [
+                      sale.id,
+                      sale.productName,
+                      sale.itemType,
+                      sale.customerName || sale.customerEmail,
+                      sale.amountEur,
+                      sale.status,
+                      sale.paymentIntentId || sale.stripeSessionId,
+                      sale.createdAt
+                    ])
+                  )
+                }
+              >
+                Exportar CSV
+              </button>
+            </div>
+            <div className="list">
+              {paginatedAllSales.items.map((sale) => (
+                <div className="row-item" key={sale.id}>
+                  <div className="row-item-main">
+                    <strong className="row-item-title" title={sale.productName}>{truncateText(sale.productName, TITLE_MAX_CHARS)}</strong>
+                    <small>{sale.customerName || sale.customerEmail}</small>
+                    <small>{new Date(sale.createdAt).toLocaleString('es-ES')}</small>
+                  </div>
+                  <div className="row-item-main">
+                    <strong>€{sale.amountEur.toFixed(2)}</strong>
+                    <small>{sale.itemType}</small>
+                    <small>{sale.status}</small>
+                  </div>
+                </div>
+              ))}
+              {scopedAllSales.length === 0 ? <small>No hay transacciones para este tipo de filtro.</small> : null}
+            </div>
+            <div className="pagination-row">
+              <button className="ghost btn-xs" disabled={paginatedAllSales.page <= 1} onClick={() => setAllSalesPage((p) => Math.max(1, p - 1))}>Anterior</button>
+              <small>Página {paginatedAllSales.page} / {paginatedAllSales.totalPages}</small>
+              <button className="ghost btn-xs" disabled={paginatedAllSales.page >= paginatedAllSales.totalPages} onClick={() => setAllSalesPage((p) => p + 1)}>Siguiente</button>
+            </div>
+          </article>
+        </section>
+      ) : null}
+
+      {tab === 'audience' ? (
+        <section className="panel">
+          <h2>Usuarios y suscripciones a lives</h2>
+          <div className="grid-two">
+            <article className="card">
+              <h3>Registro de usuarios ({registeredUsers.length})</h3>
+              <div className="list">
+                {registeredUsers.map((user) => (
+                  <div className="row-item" key={user.email}>
+                    <div className="row-item-main">
+                      <strong className="row-item-title" title={user.email}>{truncateText(user.email, TITLE_MAX_CHARS)}</strong>
+                      <small>{user.authProvider} · onboarded: {user.onboardingCompleted ? 'sí' : 'no'}</small>
+                      <small>Alta: {new Date(user.createdAt).toLocaleString('es-ES')}</small>
+                    </div>
+                    <div className="row-item-main">
+                      <small>{user.role}</small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
+            <article className="card">
+              <h3>Suscritos a lives ({liveSubscriptions.length})</h3>
+              <div className="list">
+                {liveSubscriptions.map((subscription) => (
+                  <div className="row-item" key={subscription.id}>
+                    <div className="row-item-main">
+                      <strong className="row-item-title" title={subscription.liveTitle}>{truncateText(subscription.liveTitle, TITLE_MAX_CHARS)}</strong>
+                      <small>{subscription.userName || subscription.userEmail}</small>
+                      <small>{new Date(subscription.liveStartsAt).toLocaleString('es-ES')}</small>
+                    </div>
+                    <div className="row-item-main">
+                      <small>{subscription.source}</small>
+                      <small>Alta: {new Date(subscription.createdAt).toLocaleString('es-ES')}</small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </div>
+        </section>
+      ) : null}
     </main>
   );
+}
+function normalizeDateForApi(input: string): string {
+  if (!input) {
+    return new Date().toISOString();
+  }
+  const parsed = new Date(input);
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date().toISOString();
+  }
+  return parsed.toISOString();
+}
+
+function toDateTimeLocalInput(input: string): string {
+  const parsed = new Date(input);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  const timezoneOffset = parsed.getTimezoneOffset() * 60_000;
+  return new Date(parsed.getTime() - timezoneOffset).toISOString().slice(0, 16);
+}
+
+function paginateList<T>(items: T[], requestedPage: number, pageSize: number) {
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const page = Math.min(Math.max(requestedPage, 1), totalPages);
+  const startIndex = (page - 1) * pageSize;
+  return {
+    page,
+    totalPages,
+    items: items.slice(startIndex, startIndex + pageSize)
+  };
+}
+
+function exportCsvFile(filename: string, headers: string[], rows: Array<Array<string | number | null>>) {
+  const serialize = (value: string | number | null) => {
+    if (value === null) {
+      return '';
+    }
+    const text = String(value).replace(/"/g, '""');
+    return /[",\n]/.test(text) ? `"${text}"` : text;
+  };
+  const csv = [headers.map(serialize).join(','), ...rows.map((row) => row.map(serialize).join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function truncateText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+  return `${value.slice(0, maxChars - 1)}...`;
 }

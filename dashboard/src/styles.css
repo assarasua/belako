@@ -100,6 +100,33 @@ button.ghost {
   gap: 12px;
 }
 
+.sales-filter-row {
+  display: grid;
+  gap: 8px;
+}
+
+.sales-filter-row label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .grid-two {
   display: grid;
   gap: 12px;
@@ -125,9 +152,34 @@ button.ghost {
   border-radius: 10px;
   padding: 10px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+}
+
+.row-item-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.row-item-title {
+  display: block;
+  max-width: min(62vw, 360px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-xs {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 10px;
+  min-height: 32px;
+}
+
+.row-item .topbar-actions {
+  flex-shrink: 0;
 }
 
 input,
@@ -172,5 +224,16 @@ small {
 @media (min-width: 900px) {
   .grid-two {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .sales-filter-row {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
+    align-items: end;
+  }
+}
+
+@media (max-width: 560px) {
+  .row-item-title {
+    max-width: 44vw;
   }
 }

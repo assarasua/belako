@@ -35,7 +35,8 @@ import {
   fetchStripeConfig,
   loginWithGoogle,
   removePaymentMethod,
-  setDefaultPaymentMethod
+  setDefaultPaymentMethod,
+  subscribeToLive
 } from '../services/api-client';
 
 export type FidelityModel = ReturnType<typeof useFidelityState>;
@@ -863,6 +864,7 @@ export function useFidelityState() {
     }
     setStatusText(`Te avisaremos cuando empiece "${stream.title}".`);
     track('EVT_stream_register', `Registro al próximo directo de ${stream.artist}`);
+    void subscribeToLive(streamId, profileSettings.displayName || authUserEmail || undefined);
   }
 
   function openConcertTicketCheckout(ticketId: string) {
@@ -1356,6 +1358,7 @@ export function useFidelityState() {
       productId: selectedProduct.id,
       productName: selectedProduct.name,
       customerEmail: checkoutForm.email,
+      customerName: checkoutForm.fullName,
       totalAmountEur: total,
       paymentMethodId: selectedPaymentMethodId || undefined,
       saveForFuture

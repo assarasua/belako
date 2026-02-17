@@ -33,6 +33,17 @@ export type LiveItem = {
   isActive: boolean;
 };
 
+export type LiveSubscriptionItem = {
+  id: string;
+  liveId: string;
+  liveTitle: string;
+  liveStartsAt: string;
+  userEmail: string;
+  userName?: string;
+  source: string;
+  createdAt: string;
+};
+
 export type TierConfig = {
   id: 'fan' | 'super' | 'ultra' | 'god';
   title: string;
@@ -381,6 +392,55 @@ export async function updateLive(id: string, input: Partial<Omit<LiveItem, 'id'>
 export async function deleteLive(id: string): Promise<boolean> {
   const result = await prisma.bandLive.deleteMany({ where: { id } });
   return result.count > 0;
+}
+
+export async function registerLiveSubscription(input: {
+  liveId: string;
+  userEmail: string;
+  userName?: string;
+  source?: string;
+}): Promise<boolean> {
+  const live = await prisma.bandLive.findUnique({ where: { id: input.liveId } });
+  if (!live) {
+    return false;
+  }
+  await prisma.bandLiveSubscription.upsert({
+    where: {
+      liveId_userEmail: {
+        liveId: input.liveId,
+        userEmail: input.userEmail.trim().toLowerCase()
+      }
+    },
+    create: {
+      liveId: input.liveId,
+      userEmail: input.userEmail.trim().toLowerCase(),
+      userName: input.userName || undefined,
+      source: input.source || 'APP'
+    },
+    update: {
+      userName: input.userName || undefined,
+      source: input.source || 'APP'
+    }
+  });
+  return true;
+}
+
+export async function listLiveSubscriptions(): Promise<LiveSubscriptionItem[]> {
+  const subscriptions = await prisma.bandLiveSubscription.findMany({
+    orderBy: { createdAt: 'desc' },
+    include: { live: true }
+  });
+
+  return subscriptions.map((item) => ({
+    id: item.id,
+    liveId: item.liveId,
+    liveTitle: item.live.title,
+    liveStartsAt: item.live.startsAt.toISOString(),
+    userEmail: item.userEmail,
+    userName: item.userName || '',
+    source: item.source,
+    createdAt: item.createdAt.toISOString()
+  }));
 }
 
 export async function setTierConfig(tiers: TierConfig[]) {
