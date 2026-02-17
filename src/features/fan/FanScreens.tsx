@@ -54,6 +54,18 @@ function toAddressDraft(address: Address): AddressDraft {
   };
 }
 
+function getTicketingHost(url: string | undefined): string {
+  if (!url) {
+    return '';
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
 export function FanScreens({ model }: { model: FidelityModel }) {
   const {
     fanTab,
@@ -382,24 +394,38 @@ export function FanScreens({ model }: { model: FidelityModel }) {
             {concertCatalog.map((ticket) => {
               const purchased = hasConcertTicket(ticket.id);
               const isExternal = ticket.ticketingMode === 'external';
+              const externalHost = getTicketingHost(ticket.ticketUrl);
+              const hasExternalUrl = Boolean(ticket.ticketUrl);
               return (
-                <article key={ticket.id} className="xp-action-item">
+                <article key={ticket.id} className={`xp-action-item ${isExternal ? 'is-external-event' : 'is-belako-event'}`}>
                   <strong>{ticket.title}</strong>
                   <small>{formatStreamSchedule(ticket.startsAt)} · {ticket.venue} ({ticket.city})</small>
                   <div className="ticketing-meta">
                     <span className={`ticketing-badge ${isExternal ? 'is-external' : 'is-belako'}`}>
                       {isExternal ? 'Evento externo' : 'Ticketing Belako'}
                     </span>
-                    <small>{isExternal ? 'Pago fuera de la app' : 'Pago en app'}</small>
+                    <small>
+                      {isExternal
+                        ? hasExternalUrl
+                          ? `Compra fuera de la app en ${externalHost || 'ticketing externo'}`
+                          : 'Evento externo sin URL de ticketing'
+                        : 'Compra dentro de la app (checkout Belako)'}
+                    </small>
                   </div>
                   <div className="row actions-row">
-                    <span className="store-badge">€{ticket.priceEur.toFixed(2)}</span>
+                    <span className="store-badge">{isExternal ? `Desde €${ticket.priceEur.toFixed(2)}` : `€${ticket.priceEur.toFixed(2)}`}</span>
                     <button
-                      className={isExternal ? 'ghost' : purchased ? 'ghost' : 'primary buy-ticket-cta'}
+                      className={isExternal ? 'ghost external-ticket-cta' : purchased ? 'ghost' : 'primary buy-ticket-cta'}
                       onClick={() => openConcertTicketCheckout(ticket.id)}
-                      disabled={!isExternal && purchased}
+                      disabled={isExternal ? !hasExternalUrl : purchased}
                     >
-                      {isExternal ? 'Ir a ticketing externo' : purchased ? 'Entrada comprada' : 'Comprar entrada'}
+                      {isExternal
+                        ? hasExternalUrl
+                          ? 'Abrir ticketing externo'
+                          : 'Ticketing no disponible'
+                        : purchased
+                          ? 'Entrada comprada'
+                          : 'Comprar entrada'}
                     </button>
                   </div>
                 </article>
