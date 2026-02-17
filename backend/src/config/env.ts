@@ -24,6 +24,8 @@ export const env = {
   nftBaseUri: process.env.NFT_BASE_URI || 'https://belako.bizkardolab.eu/metadata',
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
+  youtubeApiKey: process.env.YOUTUBE_API_KEY || '',
+  youtubeChannelHandle: process.env.YOUTUBE_CHANNEL_HANDLE || '@Belako',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
   googleClientId: process.env.GOOGLE_CLIENT_ID || '',
   bandAllowedEmails: (process.env.BAND_ALLOWED_EMAILS || '')

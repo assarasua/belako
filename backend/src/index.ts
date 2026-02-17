@@ -62,6 +62,7 @@ app.get('/', (_req, res) => {
       catalogStore: '/catalog/store-items',
       catalogConcerts: '/catalog/concerts',
       catalogLives: '/catalog/lives',
+      catalogVideos: '/catalog/videos',
       catalogLiveSubscribe: '/catalog/lives/subscribe',
       catalogRewards: '/catalog/rewards-config',
       loyalty: '/loyalty/evaluate',

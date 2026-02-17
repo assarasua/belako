@@ -22,6 +22,38 @@ const emptyAddressDraft: AddressDraft = {
   country: 'España'
 };
 const LIVE_EMBED_URL = 'https://www.youtube.com/embed/l7TlAz1HvSk?start=650&autoplay=1&rel=0';
+const BELAKO_BIO_TIMELINE = [
+  {
+    period: '2011/2012 · Comienzos',
+    text: 'Belako nace en Mungia (Bizkaia), consolida su formación con Josu, Lore, Cris y Lander, y gana el concurso EITB Gaztea Maketa Lehiaketa 2012, impulsando sus primeros grandes escenarios.'
+  },
+  {
+    period: '2013 · EURIE',
+    text: 'Publican su primer LP, EURIE, y realizan una gira de más de 50 conciertos por el Estado, pasando por festivales y salas clave y compartiendo cartel con artistas internacionales.'
+  },
+  {
+    period: '2014 · BELAKO REKORDS',
+    text: 'Editan los EP BELE BELTZAK BAINO EZ y AAAA!!!!, dan un paso firme en la autogestión con su sello BELAKO REKORDS y encadenan festivales de referencia y reconocimientos en medios.'
+  },
+  {
+    period: '2016/2018 · Hamen y salto internacional',
+    text: 'Con HAMEN y después RENDER ME NUMB, TRIVIAL VIOLENCE, superan los 100 directos y giran por Europa, México, Asia y EEUU, recibiendo premios por directo y trayectoria independiente.'
+  },
+  {
+    period: '2019 · Giras globales',
+    text: 'Actúan en citas como Reading & Leeds y realizan gira europea junto a DMAS y Crystal Fighters, reforzando su posicionamiento internacional.'
+  },
+  {
+    period: '2020 · Plastic Drama',
+    text: 'Lanzan PLASTIC DRAMA, su trabajo más ambicioso y reivindicativo hasta entonces, consolidándose como una de las bandas más internacionales del rock independiente estatal.'
+  }
+] as const;
+const BELAKO_MEMBERS = [
+  'Josu Billelabeitia · guitarra y voz',
+  'Cris Lizarraga · voz y teclados',
+  'Lander Zalakain · batería y voz',
+  'Lore Billelabeitia · bajo, teclados y voz'
+] as const;
 
 function toEmbedUrl(url: string | undefined): string {
   if (!url) {
@@ -89,7 +121,17 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     concertCatalog,
     dynamicRewards,
     xpActions,
+    belakoVideos,
+    belakoVideosLoading,
+    belakoVideosError,
+    belakoVideosNextPageToken,
+    selectedBelakoVideo,
+    showBelakoVideoModal,
     openCheckout,
+    openBelakoVideo,
+    closeBelakoVideoModal,
+    loadBelakoVideos,
+    loadMoreBelakoVideos,
     journeyXp,
     journeyTiers,
     currentJourneyTier,
@@ -128,6 +170,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   const [addressError, setAddressError] = useState('');
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
   const [showFullscreenLive, setShowFullscreenLive] = useState(false);
+  const [liveHubSection, setLiveHubSection] = useState<'videos' | 'bio' | 'live'>('live');
   const purchaseEntries = useMemo(
     () => purchases.slice(0, 10),
     [purchases]
@@ -149,6 +192,20 @@ export function FanScreens({ model }: { model: FidelityModel }) {
       hour: '2-digit',
       minute: '2-digit'
     });
+  }
+
+  function formatVideoDate(value: string) {
+    return new Date(value).toLocaleDateString('es-ES', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  }
+
+  function formatVideoDuration(durationSeconds: number) {
+    const minutes = Math.floor(durationSeconds / 60);
+    const seconds = durationSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
   }
 
   const sortedStoreProducts = useMemo(() => {
@@ -282,6 +339,137 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     setShowFullscreenLive(true);
   }
 
+  function renderConcertsBlock() {
+    return (
+      <>
+        <article className="guide-card">
+          <h3>Conciertos Belako</h3>
+          <p>Explora próximos conciertos y compra tus entradas desde aquí.</p>
+        </article>
+
+        <article className="metric-card">
+          <p>Próximos conciertos</p>
+          <div className="xp-action-list">
+            {concertCatalog.map((ticket) => {
+              const purchased = hasConcertTicket(ticket.id);
+              const isExternal = ticket.ticketingMode === 'external';
+              const externalHost = getTicketingHost(ticket.ticketUrl);
+              const hasExternalUrl = Boolean(ticket.ticketUrl);
+              return (
+                <article key={ticket.id} className={`xp-action-item ${isExternal ? 'is-external-event' : 'is-belako-event'}`}>
+                  <strong>{ticket.title}</strong>
+                  <small>{formatStreamSchedule(ticket.startsAt)} · {ticket.venue} ({ticket.city})</small>
+                  <div className="ticketing-meta">
+                    <span className={`ticketing-badge ${isExternal ? 'is-external' : 'is-belako'}`}>
+                      {isExternal ? 'Evento externo' : 'Ticketing Belako'}
+                    </span>
+                    <small>
+                      {isExternal
+                        ? hasExternalUrl
+                          ? `Compra fuera de la app en ${externalHost || 'ticketing externo'}`
+                          : 'Evento externo sin URL de ticketing'
+                        : 'Compra dentro de la app (checkout Belako)'}
+                    </small>
+                  </div>
+                  <div className="row actions-row">
+                    <span className="store-badge">{isExternal ? `Desde €${ticket.priceEur.toFixed(2)}` : `€${ticket.priceEur.toFixed(2)}`}</span>
+                    <button
+                      className={isExternal ? 'ghost external-ticket-cta' : purchased ? 'ghost' : 'primary buy-ticket-cta'}
+                      onClick={() => openConcertTicketCheckout(ticket.id)}
+                      disabled={isExternal ? !hasExternalUrl : purchased}
+                    >
+                      {isExternal
+                        ? hasExternalUrl
+                          ? 'Abrir ticketing externo'
+                          : 'Ticketing no disponible'
+                        : purchased
+                          ? 'Entrada comprada'
+                          : 'Comprar entrada'}
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </article>
+      </>
+    );
+  }
+
+  function renderBioBlock() {
+    return (
+      <article className="metric-card bio-section">
+        <h3>Biografía Belako</h3>
+        <p className="hint">
+          Resumen editorial de la bio oficial: evolución del proyecto, hitos internacionales y formación actual.
+        </p>
+        <div className="bio-timeline">
+          {BELAKO_BIO_TIMELINE.map((item) => (
+            <article key={item.period} className="bio-item">
+              <strong>{item.period}</strong>
+              <small>{item.text}</small>
+            </article>
+          ))}
+        </div>
+        <div className="bio-members">
+          <p className="hero-kicker">Formación</p>
+          {BELAKO_MEMBERS.map((member) => (
+            <small key={member}>{member}</small>
+          ))}
+        </div>
+      </article>
+    );
+  }
+
+  function renderVideosBlock() {
+    return (
+      <article className="metric-card video-section">
+        <h3>Videos Belako</h3>
+        {belakoVideosLoading && belakoVideos.length === 0 ? (
+          <div className="video-empty">
+            <p>Cargando videos...</p>
+          </div>
+        ) : null}
+
+        {belakoVideosError ? (
+          <div className="video-error">
+            <p>{belakoVideosError}</p>
+            <button className="ghost" onClick={() => void loadBelakoVideos(true)}>Reintentar</button>
+          </div>
+        ) : null}
+
+        {!belakoVideosLoading && belakoVideos.length === 0 && !belakoVideosError ? (
+          <div className="video-empty">
+            <p>No hay videos disponibles.</p>
+          </div>
+        ) : null}
+
+        <div className="video-grid">
+          {belakoVideos.map((video) => (
+            <article key={video.id} className="video-card">
+              {video.thumbnailUrl ? (
+                <img className="video-thumb" src={video.thumbnailUrl} alt={`Video Belako - ${video.title}`} loading="lazy" />
+              ) : (
+                <div className="video-thumb video-thumb-fallback">Belako Video</div>
+              )}
+              <div className="video-meta">
+                <strong>{video.title}</strong>
+                <small>{formatVideoDate(video.publishedAt)} · {formatVideoDuration(video.durationSeconds)}</small>
+              </div>
+              <button className="video-card-cta" onClick={() => openBelakoVideo(video.youtubeVideoId)}>Ver video</button>
+            </article>
+          ))}
+        </div>
+
+        {belakoVideosNextPageToken ? (
+          <button className="ghost video-load-more" onClick={loadMoreBelakoVideos} disabled={belakoVideosLoading}>
+            {belakoVideosLoading ? 'Cargando...' : 'Cargar más'}
+          </button>
+        ) : null}
+      </article>
+    );
+  }
+
   if (fanTab === 'home') {
     return (
       <section className="stack">
@@ -354,6 +542,8 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           </>
         )}
 
+        {renderBioBlock()}
+
         <article className="metric-card">
           <p>Resumen rapido</p>
           <small>Asistencia {attendanceCount} directos | Gasto €{spend.toFixed(2)}</small>
@@ -367,15 +557,19 @@ export function FanScreens({ model }: { model: FidelityModel }) {
               <span className="badge">EN DIRECTO</span>
               <button className="ghost" onClick={() => setShowFullscreenLive(false)}>Cerrar</button>
             </div>
-            <iframe
-              src={toEmbedUrl(activeStream.youtubeUrl)}
-              title="Belako Live Fullscreen"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              referrerPolicy="strict-origin-when-cross-origin"
-              allowFullScreen
-            />
+            <div className="youtube-embed-shell">
+              <iframe
+                className="youtube-embed-frame"
+                src={toEmbedUrl(activeStream.youtubeUrl)}
+                title="Belako Live Fullscreen"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
           </article>
         ) : null}
+
       </section>
     );
   }
@@ -383,56 +577,53 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   if (fanTab === 'live') {
     return (
       <section className="stack">
-        <article className="guide-card">
-          <h3>Conciertos Belako</h3>
-          <p>Explora próximos conciertos y compra tus entradas desde aquí.</p>
-        </article>
-
-        <article className="metric-card">
-          <p>Próximos conciertos</p>
-          <div className="xp-action-list">
-            {concertCatalog.map((ticket) => {
-              const purchased = hasConcertTicket(ticket.id);
-              const isExternal = ticket.ticketingMode === 'external';
-              const externalHost = getTicketingHost(ticket.ticketUrl);
-              const hasExternalUrl = Boolean(ticket.ticketUrl);
-              return (
-                <article key={ticket.id} className={`xp-action-item ${isExternal ? 'is-external-event' : 'is-belako-event'}`}>
-                  <strong>{ticket.title}</strong>
-                  <small>{formatStreamSchedule(ticket.startsAt)} · {ticket.venue} ({ticket.city})</small>
-                  <div className="ticketing-meta">
-                    <span className={`ticketing-badge ${isExternal ? 'is-external' : 'is-belako'}`}>
-                      {isExternal ? 'Evento externo' : 'Ticketing Belako'}
-                    </span>
-                    <small>
-                      {isExternal
-                        ? hasExternalUrl
-                          ? `Compra fuera de la app en ${externalHost || 'ticketing externo'}`
-                          : 'Evento externo sin URL de ticketing'
-                        : 'Compra dentro de la app (checkout Belako)'}
-                    </small>
-                  </div>
-                  <div className="row actions-row">
-                    <span className="store-badge">{isExternal ? `Desde €${ticket.priceEur.toFixed(2)}` : `€${ticket.priceEur.toFixed(2)}`}</span>
-                    <button
-                      className={isExternal ? 'ghost external-ticket-cta' : purchased ? 'ghost' : 'primary buy-ticket-cta'}
-                      onClick={() => openConcertTicketCheckout(ticket.id)}
-                      disabled={isExternal ? !hasExternalUrl : purchased}
-                    >
-                      {isExternal
-                        ? hasExternalUrl
-                          ? 'Abrir ticketing externo'
-                          : 'Ticketing no disponible'
-                        : purchased
-                          ? 'Entrada comprada'
-                          : 'Comprar entrada'}
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
+        <article className="guide-card live-home-hub">
+          <h3>Home</h3>
+          <p>Selecciona sección completa para navegar más rápido.</p>
+          <div className="live-home-switch">
+            <button
+              className={liveHubSection === 'videos' ? 'primary section-tile active' : 'ghost section-tile'}
+              onClick={() => setLiveHubSection('videos')}
+            >
+              Videos
+            </button>
+            <button
+              className={liveHubSection === 'bio' ? 'primary section-tile active' : 'ghost section-tile'}
+              onClick={() => setLiveHubSection('bio')}
+            >
+              Bio
+            </button>
+            <button
+              className={liveHubSection === 'live' ? 'primary section-tile active' : 'ghost section-tile'}
+              onClick={() => setLiveHubSection('live')}
+            >
+              Conciertos
+            </button>
           </div>
         </article>
+
+        {liveHubSection === 'videos' ? renderVideosBlock() : null}
+        {liveHubSection === 'bio' ? renderBioBlock() : null}
+        {liveHubSection === 'live' ? renderConcertsBlock() : null}
+
+        {showBelakoVideoModal && selectedBelakoVideo ? (
+          <article className="video-modal" role="dialog" aria-modal="true" aria-label="Video de Belako en pantalla completa">
+            <div className="live-fullscreen-top">
+              <span className="badge">VIDEO</span>
+              <button className="ghost" onClick={closeBelakoVideoModal}>Cerrar</button>
+            </div>
+            <div className="youtube-embed-shell">
+              <iframe
+                className="youtube-embed-frame"
+                src={`${selectedBelakoVideo.embedUrl}?autoplay=1&rel=0`}
+                title={`Video Belako - ${selectedBelakoVideo.title}`}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </article>
+        ) : null}
       </section>
     );
   }

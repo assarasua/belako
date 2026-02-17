@@ -19,7 +19,7 @@ export default function App() {
   const viewKey = model.fanTab;
   const tabTitle: Record<typeof model.fanTab, string> = {
     home: 'Descubrir',
-    live: 'Conciertos',
+    live: 'Home',
     store: 'Tienda',
     rewards: 'Recompensas',
     profile: 'Perfil'

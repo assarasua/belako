@@ -17,6 +17,22 @@ export type Stream = {
   isActive?: boolean;
 };
 
+export type BelakoVideo = {
+  id: string;
+  youtubeVideoId: string;
+  title: string;
+  publishedAt: string;
+  thumbnailUrl: string;
+  durationSeconds: number;
+  embedUrl: string;
+  watchUrl: string;
+};
+
+export type BelakoVideosResponse = {
+  items: BelakoVideo[];
+  nextPageToken?: string;
+};
+
 export type ConcertTicket = {
   id: string;
   title: string;

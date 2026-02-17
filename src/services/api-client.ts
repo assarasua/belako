@@ -1,4 +1,5 @@
 import type {
+  BelakoVideosResponse,
   BillingProfile,
   ConcertTicket,
   Product,
@@ -341,6 +342,33 @@ export async function fetchLives(): Promise<ApiResult<Stream[]>> {
       return { ok: false, error: data.error || 'No se pudieron cargar directos.' };
     }
     return { ok: true, data: data.items || [] };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function fetchBelakoVideos(
+  pageToken?: string,
+  limit = 12
+): Promise<ApiResult<BelakoVideosResponse>> {
+  try {
+    const query = new URLSearchParams();
+    if (pageToken) {
+      query.set('pageToken', pageToken);
+    }
+    query.set('limit', String(limit));
+    const response = await fetch(`${API_BASE_URL}/catalog/videos?${query.toString()}`, { cache: 'no-store' });
+    const data = (await response.json()) as BelakoVideosResponse & { error?: string };
+    if (!response.ok) {
+      return { ok: false, error: data.error || 'No se pudieron cargar vídeos de Belako.' };
+    }
+    return {
+      ok: true,
+      data: {
+        items: Array.isArray(data.items) ? data.items : [],
+        nextPageToken: data.nextPageToken
+      }
+    };
   } catch {
     return { ok: false, error: 'No se pudo conectar con el backend.' };
   }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { concertTickets, products, streams, nowLabel } from '../lib/mock-data';
 import type {
   Address,
+  BelakoVideo,
   BillingProfile,
   ConcertTicket,
   DynamicReward,
@@ -27,6 +28,7 @@ import {
   createStripeCheckoutSession,
   deleteAccount,
   fetchAuthSession,
+  fetchBelakoVideos,
   fetchConcerts,
   fetchLives,
   fetchMyLiveSubscriptions,
@@ -266,6 +268,12 @@ export function useFidelityState() {
   const [liveState, setLiveState] = useState<LiveState>('live');
   const [sheet, setSheet] = useState<SheetState>('none');
   const [liveCatalog, setLiveCatalog] = useState<Stream[]>(streams);
+  const [belakoVideos, setBelakoVideos] = useState<BelakoVideo[]>([]);
+  const [belakoVideosLoading, setBelakoVideosLoading] = useState(false);
+  const [belakoVideosError, setBelakoVideosError] = useState('');
+  const [belakoVideosNextPageToken, setBelakoVideosNextPageToken] = useState<string | null>(null);
+  const [selectedBelakoVideo, setSelectedBelakoVideo] = useState<BelakoVideo | null>(null);
+  const [showBelakoVideoModal, setShowBelakoVideoModal] = useState(false);
   const [storeCatalog, setStoreCatalog] = useState<Product[]>(products);
   const [concertCatalog, setConcertCatalog] = useState<ConcertTicket[]>(concertTickets);
   const [rewardsConfig, setRewardsConfig] = useState<RewardsConfig>({
@@ -356,6 +364,63 @@ export function useFidelityState() {
 
   function notify(title: string, message: string) {
     setNotifications((prev) => [{ id: `n-${Date.now()}-${Math.random()}`, title, message, at: nowLabel() }, ...prev].slice(0, 12));
+  }
+
+  function mergeUniqueVideos(current: BelakoVideo[], incoming: BelakoVideo[]): BelakoVideo[] {
+    const byId = new Map<string, BelakoVideo>();
+    [...current, ...incoming].forEach((video) => {
+      if (!byId.has(video.youtubeVideoId)) {
+        byId.set(video.youtubeVideoId, video);
+      }
+    });
+    return Array.from(byId.values()).sort(
+      (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+    );
+  }
+
+  async function loadBelakoVideos(initial = false) {
+    if (belakoVideosLoading) {
+      return;
+    }
+    if (!initial && !belakoVideosNextPageToken) {
+      return;
+    }
+    setBelakoVideosLoading(true);
+    if (initial) {
+      setBelakoVideosError('');
+    }
+
+    const result = await fetchBelakoVideos(initial ? undefined : belakoVideosNextPageToken || undefined, 12);
+    if (!result.ok || !result.data) {
+      setBelakoVideosLoading(false);
+      setBelakoVideosError(result.error || 'No se pudieron cargar vídeos de Belako.');
+      return;
+    }
+    const payload = result.data;
+
+    setBelakoVideos((prev) => (initial ? mergeUniqueVideos([], payload.items) : mergeUniqueVideos(prev, payload.items)));
+    setBelakoVideosNextPageToken(payload.nextPageToken || null);
+    setBelakoVideosError('');
+    setBelakoVideosLoading(false);
+  }
+
+  function loadMoreBelakoVideos() {
+    void loadBelakoVideos(false);
+  }
+
+  function openBelakoVideo(videoId: string) {
+    const target = belakoVideos.find((item) => item.youtubeVideoId === videoId || item.id === videoId);
+    if (!target) {
+      return;
+    }
+    setSelectedBelakoVideo(target);
+    setShowBelakoVideoModal(true);
+    track('EVT_video_open', `Video abierto: ${target.title}`);
+  }
+
+  function closeBelakoVideoModal() {
+    setShowBelakoVideoModal(false);
+    setSelectedBelakoVideo(null);
   }
 
   function clearNotifications() {
@@ -453,6 +518,11 @@ export function useFidelityState() {
   useEffect(() => {
     void refreshCatalog();
   }, [refreshCatalog]);
+
+  useEffect(() => {
+    void loadBelakoVideos(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -1195,6 +1265,11 @@ export function useFidelityState() {
     setAuthProvider(null);
     setAuthError('');
     setOnboardingDoneInSession(false);
+    setBelakoVideos([]);
+    setBelakoVideosNextPageToken(null);
+    setBelakoVideosError('');
+    setSelectedBelakoVideo(null);
+    setShowBelakoVideoModal(false);
     setOnboardingStep(0);
     setIsNewUser(false);
     setFanTabState('home');
@@ -1217,6 +1292,11 @@ export function useFidelityState() {
     setAuthUserEmail('');
     setAuthProvider(null);
     setAuthError('');
+    setBelakoVideos([]);
+    setBelakoVideosNextPageToken(null);
+    setBelakoVideosError('');
+    setSelectedBelakoVideo(null);
+    setShowBelakoVideoModal(false);
     setOnboardingDoneInSession(false);
     setOnboardingStep(0);
     setIsNewUser(false);
@@ -1542,6 +1622,12 @@ export function useFidelityState() {
     fullLiveRewardUnlocked,
     fullLiveRewardClaimed,
     liveCatalog,
+    belakoVideos,
+    belakoVideosLoading,
+    belakoVideosError,
+    belakoVideosNextPageToken,
+    selectedBelakoVideo,
+    showBelakoVideoModal,
     storeCatalog,
     concertCatalog,
     dynamicRewards: rewardsConfig.rewards.filter((reward) => reward.active),
@@ -1586,6 +1672,10 @@ export function useFidelityState() {
     finishOnboardingForCurrentUser,
     watchFullLive,
     joinLiveStream,
+    openBelakoVideo,
+    closeBelakoVideoModal,
+    loadBelakoVideos,
+    loadMoreBelakoVideos,
     registerStreamReminder,
     openConcertTicketCheckout,
     claimFullLiveReward,
