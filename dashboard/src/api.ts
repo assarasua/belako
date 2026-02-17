@@ -21,6 +21,7 @@ export type ConcertItem = {
   city: string;
   startsAt: string;
   priceEur: number;
+  ticketingMode: 'belako' | 'external';
   ticketUrl?: string;
   isActive: boolean;
 };
@@ -113,9 +114,12 @@ export type DashboardSalesOverview = {
 
 export type RegisteredUserItem = {
   email: string;
-  role: 'fan' | 'artist';
+  role: 'user' | 'artist';
+  fanTier: 'Fan Belako' | 'Super Fan Belako' | 'Ultra Fan Belako' | 'God Fan Belako' | 'Artist';
+  xp: number;
   authProvider: 'google' | 'email';
   onboardingCompleted: boolean;
+  lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -129,6 +133,20 @@ export type LiveSubscriptionItem = {
   userName?: string;
   source: string;
   createdAt: string;
+};
+
+export type StripeInvoiceSummary = {
+  paymentIntentId: string;
+  chargeId?: string;
+  status: string;
+  amountEur: number;
+  currency: string;
+  createdAt: string;
+  receiptUrl?: string;
+  hostedInvoiceUrl?: string;
+  invoicePdfUrl?: string;
+  customerEmail?: string;
+  customerName?: string;
 };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
@@ -158,7 +176,7 @@ export async function loginWithGoogle(idToken: string): Promise<ApiResult<UserSe
     const response = await fetch(`${API_BASE_URL}/auth/google`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken })
+      body: JSON.stringify({ idToken, target: 'dashboard' })
     });
     const data = (await response.json()) as {
       token?: string;
@@ -243,6 +261,19 @@ export async function getRegisteredUsers(): Promise<ApiResult<RegisteredUserItem
 
 export async function getLiveSubscriptions(): Promise<ApiResult<LiveSubscriptionItem[]>> {
   return getItems<LiveSubscriptionItem>('/dashboard/live-subscriptions');
+}
+
+export async function getSaleInvoice(saleId: string): Promise<ApiResult<StripeInvoiceSummary>> {
+  try {
+    const response = await authFetch(`/dashboard/sales/${saleId}/invoice`);
+    const data = (await response.json()) as StripeInvoiceSummary & { error?: string };
+    if (!response.ok) {
+      return { ok: false, error: data.error || 'No se pudo cargar la factura.' };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
 }
 
 async function send<T>(path: string, method: 'POST' | 'PATCH' | 'PUT' | 'DELETE', body?: unknown): Promise<ApiResult<T>> {

@@ -14,6 +14,7 @@ import {
   getLiveSubscriptions,
   getRegisteredUsers,
   getRewardsConfig,
+  getSaleInvoice,
   getSalesOverview,
   getSession,
   getStoreItems,
@@ -72,6 +73,7 @@ const emptyConcertDraft: Omit<ConcertItem, 'id'> = {
   city: '',
   startsAt: new Date().toISOString(),
   priceEur: 0,
+  ticketingMode: 'belako',
   ticketUrl: '',
   isActive: true
 };
@@ -119,6 +121,9 @@ export function App() {
   const [registrationStatusFilter, setRegistrationStatusFilter] = useState('all');
   const [salesScopeFilter, setSalesScopeFilter] = useState<SalesScope>('all');
   const [allSalesPage, setAllSalesPage] = useState(1);
+  const [userFanTierFilter, setUserFanTierFilter] = useState<'all' | RegisteredUserItem['fanTier']>('all');
+  const [userSortBy, setUserSortBy] = useState<'createdAt' | 'lastLoginAt' | 'fanTier' | 'xp'>('createdAt');
+  const [userSortDirection, setUserSortDirection] = useState<'asc' | 'desc'>('desc');
 
   const [storeDraft, setStoreDraft] = useState(emptyStoreDraft);
   const [storeImageError, setStoreImageError] = useState('');
@@ -135,6 +140,8 @@ export function App() {
   const [liveEditDraft, setLiveEditDraft] = useState<Omit<LiveItem, 'id'>>(emptyLiveDraft);
   const liveEditRef = useRef<HTMLElement | null>(null);
   const [rewardDraft, setRewardDraft] = useState(emptyRewardDraft);
+  const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
+  const [rewardEditDraft, setRewardEditDraft] = useState<Omit<RewardConfigItem, 'id'>>(emptyRewardDraft);
 
   const artistDenied = session && session.role !== 'artist';
 
@@ -359,6 +366,29 @@ export function App() {
         .reduce((sum, sale) => sum + sale.amountEur, 0),
     [filteredSales]
   );
+  const merchRevenue = useMemo(
+    () =>
+      filteredSales
+        .filter((sale) => sale.status === 'PAID' && sale.itemType === 'merch')
+        .reduce((sum, sale) => sum + sale.amountEur, 0),
+    [filteredSales]
+  );
+  const concertRevenue = useMemo(
+    () =>
+      filteredSales
+        .filter((sale) => sale.status === 'PAID' && sale.itemType === 'ticket')
+        .reduce((sum, sale) => sum + sale.amountEur, 0),
+    [filteredSales]
+  );
+  const statusCount = useMemo(
+    () => ({
+      paid: filteredSales.filter((sale) => sale.status === 'PAID').length,
+      pending: filteredSales.filter((sale) => sale.status === 'PENDING').length,
+      failed: filteredSales.filter((sale) => sale.status === 'FAILED').length
+    }),
+    [filteredSales]
+  );
+  const maxRevenueForChart = Math.max(merchRevenue, concertRevenue, 1);
   const salesScopeOptions: Array<{ value: SalesScope; label: string }> = [
     { value: 'all', label: 'Todo' },
     { value: 'store', label: 'Tienda' },
@@ -386,6 +416,34 @@ export function App() {
     () => paginateList(scopedAllSales, allSalesPage, SALES_PAGE_SIZE),
     [scopedAllSales, allSalesPage]
   );
+  const userFanTierOptions = useMemo(
+    () => ['all', ...Array.from(new Set(registeredUsers.map((user) => user.fanTier)))],
+    [registeredUsers]
+  );
+  const filteredAndSortedUsers = useMemo(() => {
+    const fanTierRank: Record<RegisteredUserItem['fanTier'], number> = {
+      'Fan Belako': 0,
+      'Super Fan Belako': 1,
+      'Ultra Fan Belako': 2,
+      'God Fan Belako': 3,
+      Artist: 4
+    };
+    const filtered = registeredUsers.filter((user) =>
+      userFanTierFilter === 'all' ? true : user.fanTier === userFanTierFilter
+    );
+    const sorted = [...filtered].sort((a, b) => {
+      if (userSortBy === 'fanTier') {
+        return fanTierRank[a.fanTier] - fanTierRank[b.fanTier];
+      }
+      if (userSortBy === 'xp') {
+        return a.xp - b.xp;
+      }
+      const valueA = userSortBy === 'createdAt' ? new Date(a.createdAt).getTime() : new Date(a.lastLoginAt || 0).getTime();
+      const valueB = userSortBy === 'createdAt' ? new Date(b.createdAt).getTime() : new Date(b.lastLoginAt || 0).getTime();
+      return valueA - valueB;
+    });
+    return userSortDirection === 'asc' ? sorted : sorted.reverse();
+  }, [registeredUsers, userFanTierFilter, userSortBy, userSortDirection]);
 
   if (authLoading) {
     return <main className="dashboard-shell"><p>Cargando sesión...</p></main>;
@@ -463,12 +521,73 @@ export function App() {
           <h2>Tienda</h2>
           <div className="grid-two">
             <article className="card">
-              <h3>Nuevo producto</h3>
-              <input maxLength={90} placeholder="Nombre" value={storeDraft.name} onChange={(e) => setStoreDraft((p) => ({ ...p, name: e.target.value }))} />
-              <input type="number" step="0.01" placeholder="Precio EUR" value={storeDraft.fiatPrice || ''} onChange={(e) => setStoreDraft((p) => ({ ...p, fiatPrice: Number(e.target.value) }))} />
-              <input placeholder="Image URL" value={storeDraft.imageUrl} onChange={(e) => setStoreDraft((p) => ({ ...p, imageUrl: e.target.value }))} />
-              <label className="ghost">
-                Subir imagen (móvil/desktop)
+              <div className="form-head">
+                <h3>Nuevo producto</h3>
+                <small>Crea un producto para la tienda fan con imagen y precio en EUR.</small>
+              </div>
+
+              <div className="field-group">
+                <label htmlFor="store-name">Nombre del producto</label>
+                <input
+                  id="store-name"
+                  maxLength={90}
+                  placeholder='Ej: Camiseta "Belako Tour 2026"'
+                  value={storeDraft.name}
+                  onChange={(e) => setStoreDraft((p) => ({ ...p, name: e.target.value }))}
+                />
+              </div>
+
+              <div className="field-row">
+                <div className="field-group">
+                  <label htmlFor="store-price">Precio (EUR)</label>
+                  <input
+                    id="store-price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="29.90"
+                    value={storeDraft.fiatPrice || ''}
+                    onChange={(e) => setStoreDraft((p) => ({ ...p, fiatPrice: Number(e.target.value) }))}
+                  />
+                </div>
+                <div className="field-group field-group-checkbox">
+                  <label htmlFor="store-limited">
+                    <input
+                      id="store-limited"
+                      type="checkbox"
+                      checked={storeDraft.limited}
+                      onChange={(e) => setStoreDraft((p) => ({ ...p, limited: e.target.checked }))}
+                    />
+                    Edición limitada
+                  </label>
+                </div>
+              </div>
+
+              <div className="field-group">
+                <label htmlFor="store-image-url">Imagen (URL)</label>
+                <input
+                  id="store-image-url"
+                  placeholder="https://..."
+                  value={storeDraft.imageUrl}
+                  onChange={(e) => setStoreDraft((p) => ({ ...p, imageUrl: e.target.value }))}
+                />
+              </div>
+
+              <div className="field-group">
+                <label htmlFor="store-status">Estado</label>
+                <select
+                  id="store-status"
+                  className="status-toggle"
+                  value={storeDraft.isActive ? 'active' : 'inactive'}
+                  onChange={(e) => setStoreDraft((p) => ({ ...p, isActive: e.target.value === 'active' }))}
+                >
+                  <option value="active">Activo (sí)</option>
+                  <option value="inactive">Inactivo (no)</option>
+                </select>
+              </div>
+
+              <label className="upload-label">
+                <span>o subir imagen (móvil/desktop)</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -481,23 +600,50 @@ export function App() {
                   }
                 />
               </label>
-              {storeDraft.imageUrl ? <img src={storeDraft.imageUrl} alt="Preview producto" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 8 }} /> : null}
+
+              {storeDraft.imageUrl ? (
+                <div className="store-preview">
+                  <img src={storeDraft.imageUrl} alt="Preview producto" />
+                </div>
+              ) : (
+                <div className="store-preview is-empty">
+                  <small>Añade una imagen para previsualizar el producto.</small>
+                </div>
+              )}
+
               {storeImageError ? <p className="error">{storeImageError}</p> : null}
-              <button onClick={async () => {
-                if (!storeDraft.imageUrl) {
-                  setStoreImageError('Añade una imagen por URL o subida.');
-                  return;
-                }
-                const result = await createStoreItem(storeDraft);
-                if (!result.ok) {
-                  setStatus(result.error || 'No se pudo crear producto.');
-                  return;
-                }
-                setStoreDraft(emptyStoreDraft);
-                setStoreImageError('');
-                setStatus('Producto creado.');
-                await refreshAll();
-              }}>Añadir producto</button>
+
+              <div className="form-actions">
+                <button
+                  disabled={!storeDraft.name.trim() || !storeDraft.imageUrl.trim() || storeDraft.fiatPrice <= 0}
+                  onClick={async () => {
+                    if (!storeDraft.imageUrl) {
+                      setStoreImageError('Añade una imagen por URL o subida.');
+                      return;
+                    }
+                    const result = await createStoreItem(storeDraft);
+                    if (!result.ok) {
+                      setStatus(result.error || 'No se pudo crear producto.');
+                      return;
+                    }
+                    setStoreDraft(emptyStoreDraft);
+                    setStoreImageError('');
+                    setStatus('Producto creado.');
+                    await refreshAll();
+                  }}
+                >
+                  Publicar producto
+                </button>
+                <button
+                  className="ghost"
+                  onClick={() => {
+                    setStoreDraft(emptyStoreDraft);
+                    setStoreImageError('');
+                  }}
+                >
+                  Limpiar
+                </button>
+              </div>
             </article>
             <article className="card">
               <h3>Productos activos ({storeItems.length})</h3>
@@ -587,13 +733,16 @@ export function App() {
                   onChange={(e) => setStoreEditDraft((p) => ({ ...p, limited: e.target.checked }))}
                 /> Producto limitado
               </label>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={storeEditDraft.isActive}
-                  onChange={(e) => setStoreEditDraft((p) => ({ ...p, isActive: e.target.checked }))}
-                /> Activo
-              </label>
+              <label htmlFor="store-edit-status">Estado</label>
+              <select
+                id="store-edit-status"
+                className="status-toggle"
+                value={storeEditDraft.isActive ? 'active' : 'inactive'}
+                onChange={(e) => setStoreEditDraft((p) => ({ ...p, isActive: e.target.value === 'active' }))}
+              >
+                <option value="active">Activo (sí)</option>
+                <option value="inactive">Inactivo (no)</option>
+              </select>
               <div className="topbar-actions">
                 <button
                   onClick={async () => {
@@ -642,14 +791,37 @@ export function App() {
               <input placeholder="Ciudad" value={concertDraft.city} onChange={(e) => setConcertDraft((p) => ({ ...p, city: e.target.value }))} />
               <input type="datetime-local" value={concertDraft.startsAt.slice(0, 16)} onChange={(e) => setConcertDraft((p) => ({ ...p, startsAt: new Date(e.target.value).toISOString() }))} />
               <input type="number" step="0.01" placeholder="Precio" value={concertDraft.priceEur || ''} onChange={(e) => setConcertDraft((p) => ({ ...p, priceEur: Number(e.target.value) }))} />
-              <input placeholder="Ticket URL" value={concertDraft.ticketUrl || ''} onChange={(e) => setConcertDraft((p) => ({ ...p, ticketUrl: e.target.value }))} />
-              <label>
+              <select
+                value={concertDraft.ticketingMode}
+                onChange={(e) => {
+                  const nextMode = e.target.value as ConcertItem['ticketingMode'];
+                  setConcertDraft((p) => ({
+                    ...p,
+                    ticketingMode: nextMode,
+                    ticketUrl: nextMode === 'external' ? p.ticketUrl : ''
+                  }));
+                }}
+              >
+                <option value="belako">Ticketing Belako (checkout app)</option>
+                <option value="external">Evento externo (solo redirección)</option>
+              </select>
+              {concertDraft.ticketingMode === 'external' ? (
                 <input
-                  type="checkbox"
-                  checked={concertDraft.isActive}
-                  onChange={(e) => setConcertDraft((p) => ({ ...p, isActive: e.target.checked }))}
-                /> Activo
-              </label>
+                  placeholder="URL ticketing externo"
+                  value={concertDraft.ticketUrl || ''}
+                  onChange={(e) => setConcertDraft((p) => ({ ...p, ticketUrl: e.target.value }))}
+                />
+              ) : null}
+              <label htmlFor="concert-status">Estado</label>
+              <select
+                id="concert-status"
+                className="status-toggle"
+                value={concertDraft.isActive ? 'active' : 'inactive'}
+                onChange={(e) => setConcertDraft((p) => ({ ...p, isActive: e.target.value === 'active' }))}
+              >
+                <option value="active">Activo (sí)</option>
+                <option value="inactive">Inactivo (no)</option>
+              </select>
               <button onClick={async () => {
                 const result = await createConcert({
                   ...concertDraft,
@@ -672,6 +844,7 @@ export function App() {
                     <div className="row-item-main">
                       <strong className="row-item-title" title={item.title}>{truncateText(item.title, TITLE_MAX_CHARS)}</strong>
                       <small>{new Date(item.startsAt).toLocaleString('es-ES')}</small>
+                      <small>{item.ticketingMode === 'external' ? 'Evento externo' : 'Ticketing Belako'}</small>
                     </div>
                     <div className="topbar-actions">
                       <button
@@ -684,6 +857,7 @@ export function App() {
                             city: item.city,
                             startsAt: item.startsAt,
                             priceEur: item.priceEur,
+                            ticketingMode: item.ticketingMode || 'belako',
                             ticketUrl: item.ticketUrl || '',
                             isActive: item.isActive
                           });
@@ -740,18 +914,37 @@ export function App() {
                 value={concertEditDraft.priceEur || ''}
                 onChange={(e) => setConcertEditDraft((p) => ({ ...p, priceEur: Number(e.target.value) }))}
               />
-              <input
-                placeholder="Ticket URL"
-                value={concertEditDraft.ticketUrl || ''}
-                onChange={(e) => setConcertEditDraft((p) => ({ ...p, ticketUrl: e.target.value }))}
-              />
-              <label>
+              <select
+                value={concertEditDraft.ticketingMode}
+                onChange={(e) => {
+                  const nextMode = e.target.value as ConcertItem['ticketingMode'];
+                  setConcertEditDraft((p) => ({
+                    ...p,
+                    ticketingMode: nextMode,
+                    ticketUrl: nextMode === 'external' ? p.ticketUrl : ''
+                  }));
+                }}
+              >
+                <option value="belako">Ticketing Belako (checkout app)</option>
+                <option value="external">Evento externo (solo redirección)</option>
+              </select>
+              {concertEditDraft.ticketingMode === 'external' ? (
                 <input
-                  type="checkbox"
-                  checked={concertEditDraft.isActive}
-                  onChange={(e) => setConcertEditDraft((p) => ({ ...p, isActive: e.target.checked }))}
-                /> Activo
-              </label>
+                  placeholder="URL ticketing externo"
+                  value={concertEditDraft.ticketUrl || ''}
+                  onChange={(e) => setConcertEditDraft((p) => ({ ...p, ticketUrl: e.target.value }))}
+                />
+              ) : null}
+              <label htmlFor="concert-edit-status">Estado</label>
+              <select
+                id="concert-edit-status"
+                className="status-toggle"
+                value={concertEditDraft.isActive ? 'active' : 'inactive'}
+                onChange={(e) => setConcertEditDraft((p) => ({ ...p, isActive: e.target.value === 'active' }))}
+              >
+                <option value="active">Activo (sí)</option>
+                <option value="inactive">Inactivo (no)</option>
+              </select>
               <div className="topbar-actions">
                 <button
                   onClick={async () => {
@@ -761,6 +954,7 @@ export function App() {
                       city: concertEditDraft.city,
                       startsAt: normalizeDateForApi(concertEditDraft.startsAt),
                       priceEur: concertEditDraft.priceEur,
+                      ticketingMode: concertEditDraft.ticketingMode,
                       ticketUrl: concertEditDraft.ticketUrl || '',
                       isActive: concertEditDraft.isActive
                     });
@@ -796,13 +990,16 @@ export function App() {
               <input placeholder="Hint recompensa" value={liveDraft.rewardHint} onChange={(e) => setLiveDraft((p) => ({ ...p, rewardHint: e.target.value }))} />
               <input placeholder="Youtube URL" value={liveDraft.youtubeUrl || ''} onChange={(e) => setLiveDraft((p) => ({ ...p, youtubeUrl: e.target.value }))} />
               <input type="datetime-local" value={liveDraft.startsAt.slice(0, 16)} onChange={(e) => setLiveDraft((p) => ({ ...p, startsAt: new Date(e.target.value).toISOString() }))} />
-              <label>
-                <input
-                  type="checkbox"
-                  checked={liveDraft.isActive}
-                  onChange={(e) => setLiveDraft((p) => ({ ...p, isActive: e.target.checked }))}
-                /> Activo
-              </label>
+              <label htmlFor="live-status">Estado</label>
+              <select
+                id="live-status"
+                className="status-toggle"
+                value={liveDraft.isActive ? 'active' : 'inactive'}
+                onChange={(e) => setLiveDraft((p) => ({ ...p, isActive: e.target.value === 'active' }))}
+              >
+                <option value="active">Activo (sí)</option>
+                <option value="inactive">Inactivo (no)</option>
+              </select>
               <button onClick={async () => {
                 const result = await createLive({
                   ...liveDraft,
@@ -909,13 +1106,16 @@ export function App() {
                 value={toDateTimeLocalInput(liveEditDraft.startsAt)}
                 onChange={(e) => setLiveEditDraft((p) => ({ ...p, startsAt: normalizeDateForApi(e.target.value) }))}
               />
-              <label>
-                <input
-                  type="checkbox"
-                  checked={liveEditDraft.isActive}
-                  onChange={(e) => setLiveEditDraft((p) => ({ ...p, isActive: e.target.checked }))}
-                /> Activo
-              </label>
+              <label htmlFor="live-edit-status">Estado</label>
+              <select
+                id="live-edit-status"
+                className="status-toggle"
+                value={liveEditDraft.isActive ? 'active' : 'inactive'}
+                onChange={(e) => setLiveEditDraft((p) => ({ ...p, isActive: e.target.value === 'active' }))}
+              >
+                <option value="active">Activo (sí)</option>
+                <option value="inactive">Inactivo (no)</option>
+              </select>
               <div className="topbar-actions">
                 <button
                   onClick={async () => {
@@ -1042,43 +1242,29 @@ export function App() {
                       <small>{reward.triggerType} · +{reward.xpBonus} XP</small>
                     </div>
                     <div className="topbar-actions">
-                      <button className="ghost" onClick={async () => {
-                        const nextTitle = window.prompt('Título de recompensa', reward.title);
-                        if (nextTitle === null) {
-                          return;
-                        }
-                        const nextDescription = window.prompt('Descripción', reward.description);
-                        if (nextDescription === null) {
-                          return;
-                        }
-                        const nextXpBonusRaw = window.prompt('Bonus XP', String(reward.xpBonus));
-                        if (nextXpBonusRaw === null) {
-                          return;
-                        }
-                        const nextXpBonus = Number(nextXpBonusRaw);
-                        if (!Number.isFinite(nextXpBonus) || nextXpBonus < 0) {
-                          setStatus('El bonus XP debe ser un número mayor o igual a 0.');
-                          return;
-                        }
-                        const isActive = window.confirm('¿Dejar esta recompensa activa?');
-                        const result = await updateReward(reward.id, {
-                          title: nextTitle.trim() || reward.title,
-                          description: nextDescription.trim() || reward.description,
-                          xpBonus: Math.round(nextXpBonus),
-                          active: isActive
-                        });
-                        if (!result.ok) {
-                          setStatus(result.error || 'No se pudo actualizar recompensa.');
-                          return;
-                        }
-                        setStatus('Recompensa actualizada.');
-                        await refreshAll();
-                      }}>Editar</button>
+                      <button
+                        className="ghost"
+                        onClick={() => {
+                          setEditingRewardId(reward.id);
+                          setRewardEditDraft({
+                            title: reward.title,
+                            description: reward.description,
+                            triggerType: reward.triggerType,
+                            xpBonus: reward.xpBonus,
+                            active: reward.active
+                          });
+                        }}
+                      >
+                        Editar
+                      </button>
                       <button className="ghost" onClick={async () => {
                         const result = await deleteReward(reward.id);
                         if (!result.ok) {
                           setStatus(result.error || 'No se pudo eliminar recompensa.');
                           return;
+                        }
+                        if (editingRewardId === reward.id) {
+                          setEditingRewardId(null);
                         }
                         setStatus('Recompensa eliminada.');
                         await refreshAll();
@@ -1089,6 +1275,67 @@ export function App() {
               </div>
             </article>
           </div>
+          {editingRewardId ? (
+            <article className="card">
+              <h3>Editar recompensa activa</h3>
+              <input
+                placeholder="Título"
+                value={rewardEditDraft.title}
+                onChange={(e) => setRewardEditDraft((p) => ({ ...p, title: e.target.value }))}
+              />
+              <textarea
+                placeholder="Descripción"
+                value={rewardEditDraft.description}
+                onChange={(e) => setRewardEditDraft((p) => ({ ...p, description: e.target.value }))}
+              />
+              <select
+                value={rewardEditDraft.triggerType}
+                onChange={(e) => setRewardEditDraft((p) => ({ ...p, triggerType: e.target.value as RewardConfigItem['triggerType'] }))}
+              >
+                <option value="watch_full_live">Directo completo</option>
+                <option value="xp_threshold">Umbral XP</option>
+                <option value="purchase">Compra</option>
+              </select>
+              <input
+                type="number"
+                value={rewardEditDraft.xpBonus}
+                onChange={(e) => setRewardEditDraft((p) => ({ ...p, xpBonus: Number(e.target.value) }))}
+              />
+              <label htmlFor="reward-edit-status">Estado</label>
+              <select
+                id="reward-edit-status"
+                className="status-toggle"
+                value={rewardEditDraft.active ? 'active' : 'inactive'}
+                onChange={(e) => setRewardEditDraft((p) => ({ ...p, active: e.target.value === 'active' }))}
+              >
+                <option value="active">Activa (sí)</option>
+                <option value="inactive">Inactiva (no)</option>
+              </select>
+              <div className="topbar-actions">
+                <button
+                  onClick={async () => {
+                    const result = await updateReward(editingRewardId, {
+                      title: rewardEditDraft.title,
+                      description: rewardEditDraft.description,
+                      triggerType: rewardEditDraft.triggerType,
+                      xpBonus: Math.max(0, Math.round(rewardEditDraft.xpBonus)),
+                      active: rewardEditDraft.active
+                    });
+                    if (!result.ok) {
+                      setStatus(result.error || 'No se pudo actualizar recompensa.');
+                      return;
+                    }
+                    setEditingRewardId(null);
+                    setStatus('Recompensa actualizada.');
+                    await refreshAll();
+                  }}
+                >
+                  Guardar cambios
+                </button>
+                <button className="ghost" onClick={() => setEditingRewardId(null)}>Cancelar</button>
+              </div>
+            </article>
+          ) : null}
         </section>
       ) : null}
 
@@ -1158,7 +1405,28 @@ export function App() {
               </div>
             </article>
             <article className="card">
-              <small>El detalle por bloques (tienda/conciertos/registros) está oculto para simplificar esta vista.</small>
+              <h3>Gráficas de ventas</h3>
+              <div className="chart-grid">
+                <div className="chart-card">
+                  <small>Ingresos por tipo (pagadas)</small>
+                  <div className="chart-bar-row">
+                    <span>Merch</span>
+                    <div className="chart-bar-track"><div className="chart-bar-fill" style={{ width: `${(merchRevenue / maxRevenueForChart) * 100}%` }} /></div>
+                    <strong>€{merchRevenue.toFixed(2)}</strong>
+                  </div>
+                  <div className="chart-bar-row">
+                    <span>Conciertos</span>
+                    <div className="chart-bar-track"><div className="chart-bar-fill is-ticket" style={{ width: `${(concertRevenue / maxRevenueForChart) * 100}%` }} /></div>
+                    <strong>€{concertRevenue.toFixed(2)}</strong>
+                  </div>
+                </div>
+                <div className="chart-card">
+                  <small>Estado de ventas</small>
+                  <div className="chart-legend"><span className="dot paid" /> Pagadas: {statusCount.paid}</div>
+                  <div className="chart-legend"><span className="dot pending" /> Pendientes: {statusCount.pending}</div>
+                  <div className="chart-legend"><span className="dot failed" /> Fallidas: {statusCount.failed}</div>
+                </div>
+              </div>
             </article>
           </div>
 
@@ -1199,6 +1467,28 @@ export function App() {
                     <strong>€{sale.amountEur.toFixed(2)}</strong>
                     <small>{sale.itemType}</small>
                     <small>{sale.status}</small>
+                    <button
+                      className="ghost btn-xs"
+                      disabled={!sale.paymentIntentId && !sale.stripeSessionId}
+                      onClick={async () => {
+                        const result = await getSaleInvoice(sale.id);
+                        if (!result.ok || !result.data) {
+                          setStatus(result.error || 'No se pudo cargar la factura.');
+                          return;
+                        }
+                        const url =
+                          result.data.invoicePdfUrl ||
+                          result.data.hostedInvoiceUrl ||
+                          result.data.receiptUrl;
+                        if (!url) {
+                          setStatus('Esta compra no tiene enlace de factura/recibo en Stripe.');
+                          return;
+                        }
+                        window.open(url, '_blank', 'noopener,noreferrer');
+                      }}
+                    >
+                      Ver factura
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1218,17 +1508,47 @@ export function App() {
           <h2>Usuarios y suscripciones a lives</h2>
           <div className="grid-two">
             <article className="card">
-              <h3>Registro de usuarios ({registeredUsers.length})</h3>
+              <h3>Registro de usuarios ({filteredAndSortedUsers.length})</h3>
+              <div className="sales-filter-row">
+                <label>
+                  Tipo de fan
+                  <select value={userFanTierFilter} onChange={(e) => setUserFanTierFilter(e.target.value as typeof userFanTierFilter)}>
+                    {userFanTierOptions.map((option) => (
+                      <option key={option} value={option}>{option === 'all' ? 'Todos' : option}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Ordenar por
+                  <select value={userSortBy} onChange={(e) => setUserSortBy(e.target.value as typeof userSortBy)}>
+                    <option value="createdAt">Fecha registro</option>
+                    <option value="lastLoginAt">Último login</option>
+                    <option value="fanTier">Tipo de fan</option>
+                    <option value="xp">XP</option>
+                  </select>
+                </label>
+                <label>
+                  Dirección
+                  <select value={userSortDirection} onChange={(e) => setUserSortDirection(e.target.value as typeof userSortDirection)}>
+                    <option value="desc">Descendente</option>
+                    <option value="asc">Ascendente</option>
+                  </select>
+                </label>
+              </div>
               <div className="list">
-                {registeredUsers.map((user) => (
+                {filteredAndSortedUsers.map((user) => (
                   <div className="row-item" key={user.email}>
                     <div className="row-item-main">
                       <strong className="row-item-title" title={user.email}>{truncateText(user.email, TITLE_MAX_CHARS)}</strong>
                       <small>{user.authProvider} · onboarded: {user.onboardingCompleted ? 'sí' : 'no'}</small>
+                      <span className={`fan-tier-pill ${toFanTierClass(user.fanTier)}`}>{user.fanTier}</span>
+                      <small>XP: {user.xp}</small>
                       <small>Alta: {new Date(user.createdAt).toLocaleString('es-ES')}</small>
+                      <small>Último login: {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString('es-ES') : 'nunca'}</small>
                     </div>
                     <div className="row-item-main">
-                      <small>{user.role}</small>
+                      <span className={`fan-tier-pill ${toFanTierClass(user.fanTier)}`}>{user.fanTier}</span>
+                      <small>{user.xp} XP</small>
                     </div>
                   </div>
                 ))}
@@ -1307,6 +1627,22 @@ function exportCsvFile(filename: string, headers: string[], rows: Array<Array<st
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function toFanTierClass(tier: 'Fan Belako' | 'Super Fan Belako' | 'Ultra Fan Belako' | 'God Fan Belako' | 'Artist') {
+  if (tier === 'God Fan Belako') {
+    return 'tier-god';
+  }
+  if (tier === 'Ultra Fan Belako') {
+    return 'tier-ultra';
+  }
+  if (tier === 'Super Fan Belako') {
+    return 'tier-super';
+  }
+  if (tier === 'Artist') {
+    return 'tier-artist';
+  }
+  return 'tier-fan';
 }
 
 function truncateText(value: string, maxChars: number): string {
