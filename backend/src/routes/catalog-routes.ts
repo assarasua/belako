@@ -1,7 +1,11 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
-import { getPublicCatalog, registerLiveSubscription } from '../services/catalog-service.js';
+import {
+  getPublicCatalog,
+  listLiveSubscriptionsByUserEmail,
+  registerLiveSubscription
+} from '../services/catalog-service.js';
 
 export const catalogRoutes = Router();
 const liveSubscriptionSchema = z.object({
@@ -74,5 +78,19 @@ catalogRoutes.post(
       return;
     }
     res.status(201).json({ ok: true });
+  })
+);
+
+catalogRoutes.get(
+  '/lives/subscriptions',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const userEmail = (req.authUser?.email || '').trim().toLowerCase();
+    if (!userEmail || !userEmail.includes('@')) {
+      res.status(400).json({ error: 'No se pudo resolver el email autenticado.' });
+      return;
+    }
+    const items = await listLiveSubscriptionsByUserEmail(userEmail);
+    res.json({ items });
   })
 );

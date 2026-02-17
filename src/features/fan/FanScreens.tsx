@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Address, ProfileSettings, StorePriceSort } from '../../lib/types';
 import type { FidelityModel } from '../../state/use-fidelity-state';
 
@@ -65,7 +65,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     concertTicketCount,
     merchPurchaseCount,
     setFanTab,
-    track,
     joinLiveStream,
     registerStreamReminder,
     claimFullLiveReward,
@@ -103,10 +102,10 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     setDefaultSavedMethod,
     removeSavedMethod,
     syncPurchaseInvoice,
-    logoutSession
+    logoutSession,
+    deleteAccountSession
   } = model;
   const [storeSort, setStoreSort] = useState<StorePriceSort>('price_asc');
-  const [homeFeedCount, setHomeFeedCount] = useState(6);
   const [productImageLoadErrors, setProductImageLoadErrors] = useState<Record<string, boolean>>({});
   const [profileEditing, setProfileEditing] = useState(false);
   const [profileDraft, setProfileDraft] = useState<ProfileSettings>(profileSettings);
@@ -116,16 +115,11 @@ export function FanScreens({ model }: { model: FidelityModel }) {
   const [addressDraft, setAddressDraft] = useState<AddressDraft>(emptyAddressDraft);
   const [addressError, setAddressError] = useState('');
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
-  const [passwordError, setPasswordError] = useState('');
   const [showFullscreenLive, setShowFullscreenLive] = useState(false);
   const purchaseEntries = useMemo(
     () => purchases.slice(0, 10),
     [purchases]
   );
-
-  const homeSentinelRef = useRef<HTMLDivElement | null>(null);
 
   function isStreamLive(streamStart: string) {
     const start = new Date(streamStart).getTime();
@@ -157,17 +151,16 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     if (liveCatalog.length === 0) {
       return [];
     }
-    if (liveCatalog.length === 1) {
-      return [];
-    }
-    return Array.from({ length: homeFeedCount }, (_, index) => {
-      const stream = liveCatalog[(index + 1) % liveCatalog.length];
-      return {
-        stream,
-        virtualId: `${stream.id}-${index}`
-      };
+    const uniqueById = new Map<string, (typeof liveCatalog)[number]>();
+    liveCatalog.forEach((stream) => {
+      if (!uniqueById.has(stream.id)) {
+        uniqueById.set(stream.id, stream);
+      }
     });
-  }, [homeFeedCount, liveCatalog]);
+    return Array.from(uniqueById.values())
+      .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
+      .map((stream) => ({ stream, virtualId: stream.id }));
+  }, [liveCatalog]);
 
   const nextScheduledStream = useMemo(() => {
     if (liveCatalog.length === 0) {
@@ -179,30 +172,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
     }
     return liveCatalog[(currentIndex + 1) % liveCatalog.length];
   }, [activeStream.id, liveCatalog]);
-
-  useEffect(() => {
-    if (fanTab !== 'home' || liveCatalog.length === 0) {
-      return;
-    }
-    const sentinel = homeSentinelRef.current;
-    if (!sentinel) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const first = entries[0];
-        if (!first?.isIntersecting) {
-          return;
-        }
-        setHomeFeedCount((prev) => prev + 4);
-      },
-      { root: null, rootMargin: '180px 0px', threshold: 0.05 }
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [fanTab, homeFeedStreams.length, liveCatalog.length]);
 
   useEffect(() => {
     if (fanTab !== 'profile' || !lastCompletedPurchaseId) {
@@ -342,7 +311,7 @@ export function FanScreens({ model }: { model: FidelityModel }) {
         ) : (
           <>
             <h2>Descubrimiento</h2>
-            <div className="home-feed" aria-label="Feed infinito de directos">
+            <div className="home-feed" aria-label="Listado de directos ordenado">
               {homeFeedStreams.map(({ stream, virtualId }) => (
                 <article key={virtualId} className={`stream-card ${stream.colorClass} live-pulse`}>
                   <div className="live-top">
@@ -369,9 +338,6 @@ export function FanScreens({ model }: { model: FidelityModel }) {
                   </button>
                 </article>
               ))}
-              <div ref={homeSentinelRef} className="infinite-sentinel" aria-hidden="true">
-                Cargando más directos...
-              </div>
             </div>
           </>
         )}
@@ -415,14 +381,25 @@ export function FanScreens({ model }: { model: FidelityModel }) {
           <div className="xp-action-list">
             {concertCatalog.map((ticket) => {
               const purchased = hasConcertTicket(ticket.id);
+              const isExternal = ticket.ticketingMode === 'external';
               return (
                 <article key={ticket.id} className="xp-action-item">
                   <strong>{ticket.title}</strong>
                   <small>{formatStreamSchedule(ticket.startsAt)} · {ticket.venue} ({ticket.city})</small>
+                  <div className="ticketing-meta">
+                    <span className={`ticketing-badge ${isExternal ? 'is-external' : 'is-belako'}`}>
+                      {isExternal ? 'Evento externo' : 'Ticketing Belako'}
+                    </span>
+                    <small>{isExternal ? 'Pago fuera de la app' : 'Pago en app'}</small>
+                  </div>
                   <div className="row actions-row">
                     <span className="store-badge">€{ticket.priceEur.toFixed(2)}</span>
-                    <button className={purchased ? 'ghost' : 'primary'} onClick={() => openConcertTicketCheckout(ticket.id)} disabled={purchased}>
-                      {purchased ? 'Entrada comprada' : 'Comprar entrada'}
+                    <button
+                      className={isExternal ? 'ghost' : purchased ? 'ghost' : 'primary buy-ticket-cta'}
+                      onClick={() => openConcertTicketCheckout(ticket.id)}
+                      disabled={!isExternal && purchased}
+                    >
+                      {isExternal ? 'Ir a ticketing externo' : purchased ? 'Entrada comprada' : 'Comprar entrada'}
                     </button>
                   </div>
                 </article>
@@ -894,85 +871,23 @@ export function FanScreens({ model }: { model: FidelityModel }) {
 
       <article className="metric-card profile-card">
         <p className="profile-section-title">Seguridad</p>
-        <small>Mantén tu cuenta protegida en este dispositivo.</small>
-        <div className="row actions-row security-actions">
-          <button
-            className="ghost"
-            onClick={() => {
-              setShowPasswordForm((prev) => !prev);
-              setPasswordError('');
-            }}
-          >
-            {showPasswordForm ? 'Cerrar gestión contraseña' : 'Gestionar contraseña'}
-          </button>
-        </div>
-        {showPasswordForm ? (
-          <article className="summary-box address-form-shell">
-            <p>Cambiar contraseña</p>
-            <div className="profile-form-grid">
-              <label>Contraseña actual
-                <input
-                  type="password"
-                  value={passwordForm.current}
-                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, current: e.target.value }))}
-                />
-              </label>
-              <label>Nueva contraseña
-                <input
-                  type="password"
-                  value={passwordForm.next}
-                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, next: e.target.value }))}
-                />
-              </label>
-              <label>Confirmar nueva contraseña
-                <input
-                  type="password"
-                  value={passwordForm.confirm}
-                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirm: e.target.value }))}
-                />
-              </label>
-            </div>
-            {passwordError ? <p className="error-text">{passwordError}</p> : null}
-            <div className="row actions-row">
-              <button
-                onClick={() => {
-                  if (!passwordForm.current || !passwordForm.next || !passwordForm.confirm) {
-                    setPasswordError('Completa todos los campos.');
-                    return;
-                  }
-                  if (passwordForm.next.length < 8) {
-                    setPasswordError('La nueva contraseña debe tener al menos 8 caracteres.');
-                    return;
-                  }
-                  if (passwordForm.next !== passwordForm.confirm) {
-                    setPasswordError('La confirmación no coincide con la nueva contraseña.');
-                    return;
-                  }
-                  setPasswordError('');
-                  setPasswordForm({ current: '', next: '', confirm: '' });
-                  setShowPasswordForm(false);
-                  track('EVT_password_change_requested', 'Solicitud de cambio de contraseña desde perfil');
-                }}
-              >
-                Guardar contraseña
-              </button>
-              <button
-                className="ghost"
-                onClick={() => {
-                  setPasswordForm({ current: '', next: '', confirm: '' });
-                  setPasswordError('');
-                }}
-              >
-                Limpiar
-              </button>
-            </div>
-            <small>En MVP este cambio se registra localmente hasta conectar endpoint backend.</small>
-          </article>
-        ) : null}
+        <small>Inicio de sesión gestionado con Google SSO. No se usan contraseñas locales en la app.</small>
       </article>
 
       <div className="row actions-row">
         <button className="ghost" onClick={logoutSession}>Cerrar sesión</button>
+        <button
+          className="ghost danger-btn"
+          onClick={() => {
+            const confirmed = window.confirm('Esta acción borrará tu cuenta y no se puede deshacer. ¿Quieres continuar?');
+            if (!confirmed) {
+              return;
+            }
+            void deleteAccountSession();
+          }}
+        >
+          Borrar cuenta
+        </button>
       </div>
     </section>
   );

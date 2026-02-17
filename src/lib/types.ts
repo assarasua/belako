@@ -24,6 +24,7 @@ export type ConcertTicket = {
   city: string;
   startsAt: string;
   priceEur: number;
+  ticketingMode?: 'belako' | 'external';
   ticketUrl?: string;
   isActive?: boolean;
 };

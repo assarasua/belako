@@ -10,7 +10,8 @@ const bodySchema = z.object({
   role: z.enum(['fan', 'artist'])
 });
 const googleBodySchema = z.object({
-  idToken: z.string().min(20)
+  idToken: z.string().min(20),
+  target: z.enum(['app', 'dashboard']).optional().default('app')
 });
 
 export const authRoutes = Router();
@@ -26,12 +27,16 @@ function toPrismaRole(role: AppRole): 'FAN' | 'ARTIST' {
   return role === 'artist' ? 'ARTIST' : 'FAN';
 }
 
+function toAppRole(role: AppRole): 'user' | 'artist' {
+  return role === 'artist' ? 'artist' : 'user';
+}
+
 function fromPrismaRole(role: string | undefined): AppRole {
   return role === 'ARTIST' ? 'artist' : 'fan';
 }
 
-function resolveRoleForGoogleEmail(email: string): AppRole {
-  if (env.allowAllDashboardEmails) {
+function resolveRoleForGoogleEmail(email: string, target: 'app' | 'dashboard'): AppRole {
+  if (target === 'dashboard' && env.allowAllDashboardEmails) {
     return 'artist';
   }
   const normalized = email.trim().toLowerCase();
@@ -52,10 +57,22 @@ async function upsertAuthUser(input: {
       data: {
         email,
         role: toPrismaRole(input.role),
+        appRole: toAppRole(input.role),
         authProvider: input.authProvider,
         onboardingCompleted: false,
+        lastLoginAt: new Date(),
         name: input.name || undefined,
         picture: input.picture || undefined
+      }
+    });
+    await prisma.tierProgress.upsert({
+      where: { userId: created.id },
+      update: {},
+      create: {
+        userId: created.id,
+        attendance: 0,
+        spendUsd: 0,
+        tier: 0
       }
     });
     return { user: created, isNewUser: true };
@@ -65,9 +82,21 @@ async function upsertAuthUser(input: {
     where: { email },
     data: {
       role: toPrismaRole(input.role),
+      appRole: toAppRole(input.role),
       authProvider: input.authProvider,
+      lastLoginAt: new Date(),
       name: input.name || existing.name || undefined,
       picture: input.picture || existing.picture || undefined
+    }
+  });
+  await prisma.tierProgress.upsert({
+    where: { userId: updated.id },
+    update: {},
+    create: {
+      userId: updated.id,
+      attendance: 0,
+      spendUsd: 0,
+      tier: 0
     }
   });
   return { user: updated, isNewUser: false };
@@ -152,7 +181,7 @@ authRoutes.post('/google', async (req, res) => {
       return;
     }
 
-    const role = resolveRoleForGoogleEmail(payload.email);
+    const role = resolveRoleForGoogleEmail(payload.email, parsed.data.target);
     const { user, isNewUser } = await upsertAuthUser({
       email: payload.email,
       role,
@@ -204,7 +233,8 @@ authRoutes.get('/session', requireAuth, async (req, res) => {
       picture: existing?.picture || req.authUser?.picture || '',
       canAccessDashboard: (existing ? fromPrismaRole(existing.role) : req.authUser?.role) === 'artist',
       isRegistered: Boolean(existing),
-      onboardingCompleted: existing?.onboardingCompleted ?? false
+      onboardingCompleted: existing?.onboardingCompleted ?? false,
+      lastLoginAt: existing?.lastLoginAt?.toISOString() ?? null
     }
   });
 });
@@ -219,14 +249,25 @@ authRoutes.post('/onboarding/complete', requireAuth, async (req, res) => {
   try {
     const existing = await prisma.user.findUnique({ where: { email } });
     if (!existing) {
-      await prisma.user.create({
+      const created = await prisma.user.create({
         data: {
           email,
           role: toPrismaRole(normalizeRole(req.authUser?.role)),
+          appRole: toAppRole(normalizeRole(req.authUser?.role)),
           authProvider: req.authUser?.authProvider || 'email',
           onboardingCompleted: true,
           name: req.authUser?.name || undefined,
           picture: req.authUser?.picture || undefined
+        }
+      });
+      await prisma.tierProgress.upsert({
+        where: { userId: created.id },
+        update: {},
+        create: {
+          userId: created.id,
+          attendance: 0,
+          spendUsd: 0,
+          tier: 0
         }
       });
       res.status(201).json({ ok: true, onboardingCompleted: true, isNewUserHint: true });
@@ -237,8 +278,48 @@ authRoutes.post('/onboarding/complete', requireAuth, async (req, res) => {
       where: { email },
       data: { onboardingCompleted: true }
     });
+    await prisma.tierProgress.upsert({
+      where: { userId: existing.id },
+      update: {},
+      create: {
+        userId: existing.id,
+        attendance: 0,
+        spendUsd: 0,
+        tier: 0
+      }
+    });
     res.json({ ok: true, onboardingCompleted: true, isNewUserHint: false });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'No se pudo completar onboarding.' });
+  }
+});
+
+authRoutes.delete('/account', requireAuth, async (req, res) => {
+  const email = (req.authUser?.email || req.authUser?.sub || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ error: 'No se pudo resolver el email autenticado.' });
+    return;
+  }
+
+  try {
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (!existing) {
+      res.json({ ok: true, deleted: false });
+      return;
+    }
+
+    if (existing.role === 'ARTIST') {
+      res.status(403).json({ error: 'La cuenta de artista no se puede borrar desde esta app.' });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.tierProgress.deleteMany({ where: { userId: existing.id } });
+      await tx.user.delete({ where: { id: existing.id } });
+    });
+
+    res.json({ ok: true, deleted: true });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'No se pudo borrar la cuenta.' });
   }
 });

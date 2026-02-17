@@ -67,6 +67,7 @@ type AuthSessionResponse = {
 };
 
 type DashboardCatalogResponse<T> = { items: T[] };
+type LiveSubscriptionSummary = { liveId: string };
 
 async function authorizedFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = localStorage.getItem(AUTH_TOKEN_KEY);
@@ -87,7 +88,7 @@ export async function loginWithGoogle(idToken: string): Promise<ApiResult<AuthLo
     const response = await fetch(`${API_BASE_URL}/auth/google`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken })
+      body: JSON.stringify({ idToken, target: 'app' })
     });
     const data = (await response.json()) as AuthLoginResponse & { error?: string };
 
@@ -153,6 +154,22 @@ export async function completeOnboarding(): Promise<ApiResult<{ ok: boolean; onb
 export function clearStoredAuth() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_EMAIL_KEY);
+}
+
+export async function deleteAccount(): Promise<ApiResult<{ ok: boolean; deleted: boolean }>> {
+  try {
+    const response = await authorizedFetch('/auth/account', {
+      method: 'DELETE',
+      body: JSON.stringify({})
+    });
+    const data = (await response.json()) as { ok?: boolean; deleted?: boolean; error?: string };
+    if (!response.ok || !data.ok) {
+      return { ok: false, error: data.error || 'No se pudo borrar la cuenta.' };
+    }
+    return { ok: true, data: { ok: true, deleted: Boolean(data.deleted) } };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
 }
 
 export async function createStripeCheckoutSession(payload: StripeCheckoutPayload): Promise<ApiResult<StripeCheckoutResponse>> {
@@ -292,7 +309,7 @@ export async function fetchStripeInvoice(input: {
 
 export async function fetchStoreItems(): Promise<ApiResult<Product[]>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/catalog/store-items`);
+    const response = await fetch(`${API_BASE_URL}/catalog/store-items`, { cache: 'no-store' });
     const data = (await response.json()) as DashboardCatalogResponse<Product> & { error?: string };
     if (!response.ok) {
       return { ok: false, error: data.error || 'No se pudo cargar tienda.' };
@@ -305,7 +322,7 @@ export async function fetchStoreItems(): Promise<ApiResult<Product[]>> {
 
 export async function fetchConcerts(): Promise<ApiResult<ConcertTicket[]>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/catalog/concerts`);
+    const response = await fetch(`${API_BASE_URL}/catalog/concerts`, { cache: 'no-store' });
     const data = (await response.json()) as DashboardCatalogResponse<ConcertTicket> & { error?: string };
     if (!response.ok) {
       return { ok: false, error: data.error || 'No se pudieron cargar conciertos.' };
@@ -318,7 +335,7 @@ export async function fetchConcerts(): Promise<ApiResult<ConcertTicket[]>> {
 
 export async function fetchLives(): Promise<ApiResult<Stream[]>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/catalog/lives`);
+    const response = await fetch(`${API_BASE_URL}/catalog/lives`, { cache: 'no-store' });
     const data = (await response.json()) as DashboardCatalogResponse<Stream> & { error?: string };
     if (!response.ok) {
       return { ok: false, error: data.error || 'No se pudieron cargar directos.' };
@@ -331,7 +348,7 @@ export async function fetchLives(): Promise<ApiResult<Stream[]>> {
 
 export async function fetchRewardsConfig(): Promise<ApiResult<RewardsConfig>> {
   try {
-    const response = await fetch(`${API_BASE_URL}/catalog/rewards-config`);
+    const response = await fetch(`${API_BASE_URL}/catalog/rewards-config`, { cache: 'no-store' });
     const data = (await response.json()) as RewardsConfig & { error?: string };
     if (!response.ok) {
       return { ok: false, error: data.error || 'No se pudo cargar configuración de recompensas.' };
@@ -353,6 +370,19 @@ export async function subscribeToLive(liveId: string, userName?: string): Promis
       return { ok: false, error: data.error || 'No se pudo registrar tu suscripción al live.' };
     }
     return { ok: true, data: { ok: true } };
+  } catch {
+    return { ok: false, error: 'No se pudo conectar con el backend.' };
+  }
+}
+
+export async function fetchMyLiveSubscriptions(): Promise<ApiResult<LiveSubscriptionSummary[]>> {
+  try {
+    const response = await authorizedFetch('/catalog/lives/subscriptions');
+    const data = (await response.json()) as DashboardCatalogResponse<LiveSubscriptionSummary> & { error?: string };
+    if (!response.ok) {
+      return { ok: false, error: data.error || 'No se pudieron cargar tus suscripciones.' };
+    }
+    return { ok: true, data: data.items || [] };
   } catch {
     return { ok: false, error: 'No se pudo conectar con el backend.' };
   }

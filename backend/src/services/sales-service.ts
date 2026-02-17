@@ -211,3 +211,28 @@ export async function listDashboardSalesOverview() {
     }))
   };
 }
+
+export async function getSaleInvoiceRefs(saleId: string): Promise<{
+  saleId: string;
+  stripeSessionId: string;
+  paymentIntentId: string;
+} | null> {
+  const sale = await prisma.bandSale.findUnique({
+    where: { id: saleId },
+    select: {
+      id: true,
+      stripeSessionId: true,
+      paymentIntentId: true
+    }
+  });
+
+  if (!sale) {
+    return null;
+  }
+
+  return {
+    saleId: sale.id,
+    stripeSessionId: sale.stripeSessionId || '',
+    paymentIntentId: sale.paymentIntentId || ''
+  };
+}

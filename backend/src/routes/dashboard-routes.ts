@@ -20,7 +20,12 @@ import {
   updateStoreItem
 } from '../services/catalog-service.js';
 import { listDashboardSalesOverview } from '../services/sales-service.js';
+import { getSaleInvoiceRefs } from '../services/sales-service.js';
 import { listRegisteredUsers } from '../services/user-registry-service.js';
+import {
+  getStripeInvoiceByPaymentIntentIdForAdmin,
+  getStripeInvoiceBySessionIdForAdmin
+} from '../services/commerce-service.js';
 
 const storeItemSchema = z.object({
   name: z.string().min(1),
@@ -30,14 +35,25 @@ const storeItemSchema = z.object({
   isActive: z.boolean().default(true)
 });
 
-const concertSchema = z.object({
+const baseConcertSchema = z.object({
   title: z.string().min(1),
   venue: z.string().min(1),
   city: z.string().min(1),
   startsAt: z.string().datetime(),
   priceEur: z.number().positive(),
+  ticketingMode: z.enum(['belako', 'external']).default('belako'),
   ticketUrl: z.string().optional().default(''),
   isActive: z.boolean().default(true)
+});
+
+const concertSchema = baseConcertSchema.superRefine((value, ctx) => {
+  if (value.ticketingMode === 'external' && !value.ticketUrl.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['ticketUrl'],
+      message: 'Para evento externo, indica URL de ticketing.'
+    });
+  }
 });
 
 const liveSchema = z.object({
@@ -83,6 +99,28 @@ dashboardRoutes.use(requireAuth, requireRole('artist'));
 dashboardRoutes.get('/sales-overview', async (_req, res) => {
   const data = await listDashboardSalesOverview();
   res.json(data);
+});
+
+dashboardRoutes.get('/sales/:saleId/invoice', async (req, res) => {
+  const refs = await getSaleInvoiceRefs(req.params.saleId);
+  if (!refs) {
+    res.status(404).json({ error: 'Sale not found' });
+    return;
+  }
+  if (!refs.paymentIntentId && !refs.stripeSessionId) {
+    res.status(404).json({ error: 'No Stripe reference for this sale' });
+    return;
+  }
+
+  try {
+    const invoice = refs.paymentIntentId
+      ? await getStripeInvoiceByPaymentIntentIdForAdmin(refs.paymentIntentId)
+      : await getStripeInvoiceBySessionIdForAdmin(refs.stripeSessionId);
+    res.json(invoice);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invoice lookup error';
+    res.status(500).json({ error: message });
+  }
 });
 
 dashboardRoutes.get('/users', async (_req, res) => {
@@ -203,9 +241,13 @@ dashboardRoutes.post('/concerts', async (req, res) => {
 });
 
 dashboardRoutes.patch('/concerts/:id', async (req, res) => {
-  const parsed = concertSchema.partial().safeParse(req.body);
+  const parsed = baseConcertSchema.partial().safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid concert payload', details: parsed.error.flatten() });
+    return;
+  }
+  if (parsed.data.ticketingMode === 'external' && !(parsed.data.ticketUrl || '').trim()) {
+    res.status(400).json({ error: 'Para evento externo, indica URL de ticketing.' });
     return;
   }
   const updated = await updateConcert(req.params.id, parsed.data);

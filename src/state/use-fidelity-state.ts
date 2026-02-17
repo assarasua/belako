@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { concertTickets, products, streams, nowLabel } from '../lib/mock-data';
 import type {
   Address,
@@ -25,9 +25,11 @@ import {
   completeOnboarding,
   createSetupIntent,
   createStripeCheckoutSession,
+  deleteAccount,
   fetchAuthSession,
   fetchConcerts,
   fetchLives,
+  fetchMyLiveSubscriptions,
   fetchPaymentMethods,
   fetchRewardsConfig,
   fetchStoreItems,
@@ -362,6 +364,33 @@ export function useFidelityState() {
     setNotifications([]);
   }
 
+  const refreshCatalog = useCallback(async () => {
+    const [storeResult, concertResult, liveResult, rewardsResult] = await Promise.all([
+      fetchStoreItems(),
+      fetchConcerts(),
+      fetchLives(),
+      fetchRewardsConfig()
+    ]);
+
+    if (storeResult.ok && storeResult.data) {
+      const nextStoreItems = storeResult.data;
+      setStoreCatalog(nextStoreItems);
+      setSelectedProduct((prev) => nextStoreItems.find((item) => item.id === prev.id) || nextStoreItems[0] || prev);
+    }
+
+    if (concertResult.ok && concertResult.data) {
+      setConcertCatalog(concertResult.data);
+    }
+
+    if (liveResult.ok && liveResult.data) {
+      setLiveCatalog(liveResult.data);
+    }
+
+    if (rewardsResult.ok && rewardsResult.data) {
+      setRewardsConfig(rewardsResult.data);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     setProfileSettings(safeReadProfileSettings());
@@ -422,43 +451,32 @@ export function useFidelityState() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    async function loadCatalog() {
-      const [storeResult, concertResult, liveResult, rewardsResult] = await Promise.all([
-        fetchStoreItems(),
-        fetchConcerts(),
-        fetchLives(),
-        fetchRewardsConfig()
-      ]);
+    void refreshCatalog();
+  }, [refreshCatalog]);
 
-      if (cancelled) {
-        return;
-      }
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      void refreshCatalog();
+    }, 30000);
+    return () => window.clearInterval(intervalId);
+  }, [refreshCatalog]);
 
-      if (storeResult.ok && storeResult.data?.length) {
-        const nextStoreItems = storeResult.data;
-        setStoreCatalog(nextStoreItems);
-        setSelectedProduct((prev) => nextStoreItems.find((item) => item.id === prev.id) || nextStoreItems[0] || prev);
-      }
-
-      if (concertResult.ok && concertResult.data?.length) {
-        setConcertCatalog(concertResult.data);
-      }
-
-      if (liveResult.ok && liveResult.data?.length) {
-        setLiveCatalog(liveResult.data);
-      }
-
-      if (rewardsResult.ok && rewardsResult.data) {
-        setRewardsConfig(rewardsResult.data);
-      }
-    }
-
-    void loadCatalog();
-    return () => {
-      cancelled = true;
+  useEffect(() => {
+    const onFocus = () => {
+      void refreshCatalog();
     };
-  }, []);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshCatalog();
+      }
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [refreshCatalog]);
 
   useEffect(() => {
     if (authStatus !== 'logged_in' || !authUserEmail) {
@@ -514,6 +532,28 @@ export function useFidelityState() {
     } catch {
       // localStorage may be blocked or corrupted
     }
+  }, [authStatus, authUserEmail]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function hydrateLiveSubscriptionsFromBackend() {
+      if (authStatus !== 'logged_in') {
+        return;
+      }
+      const result = await fetchMyLiveSubscriptions();
+      if (!result.ok || !result.data || cancelled) {
+        return;
+      }
+      const remoteIds = result.data.map((item) => item.liveId).filter(Boolean);
+      if (remoteIds.length === 0) {
+        return;
+      }
+      setRegisteredStreamIds((prev) => Array.from(new Set([...prev, ...remoteIds])));
+    }
+    void hydrateLiveSubscriptionsFromBackend();
+    return () => {
+      cancelled = true;
+    };
   }, [authStatus, authUserEmail]);
 
   const shouldShowOnboarding = authStatus === 'logged_in' && !onboardingCompleted && !onboardingDoneInSession;
@@ -874,6 +914,16 @@ export function useFidelityState() {
       return;
     }
 
+    if (ticket.ticketingMode === 'external') {
+      if (!ticket.ticketUrl) {
+        setStatusText('Este evento externo no tiene URL de ticketing configurada.');
+        return;
+      }
+      window.open(ticket.ticketUrl, '_blank', 'noopener,noreferrer');
+      track('EVT_external_ticket_redirect', `Redirección a ticketing externo: ${ticket.title}`);
+      return;
+    }
+
     if (purchasedConcertTicketIds.includes(ticketId)) {
       setStatusText('Ya tienes esta entrada en tu perfil.');
       return;
@@ -1151,6 +1201,37 @@ export function useFidelityState() {
     setSheet('none');
     setStatusText('Sesión cerrada.');
     track('EVT_fan_logout', 'Fan cerró sesión local');
+  }
+
+  async function deleteAccountSession() {
+    const response = await deleteAccount();
+    if (!response.ok) {
+      setStatusText(response.error || 'No se pudo borrar la cuenta.');
+      return;
+    }
+
+    clearStoredAuth();
+    setBillingProfile(null);
+    setSelectedPaymentMethodId('');
+    setAuthStatus('logged_out');
+    setAuthUserEmail('');
+    setAuthProvider(null);
+    setAuthError('');
+    setOnboardingDoneInSession(false);
+    setOnboardingStep(0);
+    setIsNewUser(false);
+    setOnboardingCompleted(false);
+    setFanTabState('home');
+    setSheet('none');
+    setProfileSettings(defaultProfileSettings);
+    setAddresses(defaultAddresses);
+    setJourneyXp(0);
+    setRegisteredStreamIds([]);
+    setJoinedLiveStreamIds([]);
+    setFullyWatchedStreamIds([]);
+    setPurchasedConcertTicketIds([]);
+    setStatusText('Cuenta borrada correctamente.');
+    track('EVT_fan_account_deleted', 'Fan borró su cuenta');
   }
 
   function openCheckout(product: Product) {
@@ -1531,6 +1612,7 @@ export function useFidelityState() {
     onCardSetupSuccess,
     syncPurchaseInvoice,
     logoutSession,
+    deleteAccountSession,
     track
   };
 }

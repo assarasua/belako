@@ -16,6 +16,7 @@ export type ConcertItem = {
   city: string;
   startsAt: string;
   priceEur: number;
+  ticketingMode: 'belako' | 'external';
   ticketUrl?: string;
   isActive: boolean;
 };
@@ -170,6 +171,7 @@ function mapConcert(item: {
     city: item.city,
     startsAt: item.startsAt.toISOString(),
     priceEur: item.priceEur.toNumber(),
+    ticketingMode: item.ticketUrl ? 'external' : 'belako',
     ticketUrl: item.ticketUrl || '',
     isActive: item.isActive
   };
@@ -311,6 +313,7 @@ export async function deleteStoreItem(id: string): Promise<boolean> {
 }
 
 export async function createConcert(input: Omit<ConcertItem, 'id'>): Promise<ConcertItem> {
+  const normalizedTicketUrl = input.ticketingMode === 'external' ? (input.ticketUrl || '') : '';
   const created = await prisma.bandConcert.create({
     data: {
       title: input.title,
@@ -318,7 +321,7 @@ export async function createConcert(input: Omit<ConcertItem, 'id'>): Promise<Con
       city: input.city,
       startsAt: new Date(input.startsAt),
       priceEur: input.priceEur,
-      ticketUrl: input.ticketUrl || '',
+      ticketUrl: normalizedTicketUrl,
       isActive: input.isActive
     }
   });
@@ -330,6 +333,13 @@ export async function updateConcert(id: string, input: Partial<Omit<ConcertItem,
   if (!existing) {
     return null;
   }
+  const normalizedTicketUrl =
+    input.ticketingMode === 'belako'
+      ? ''
+      : input.ticketingMode === 'external'
+        ? input.ticketUrl || ''
+        : input.ticketUrl;
+
   const updated = await prisma.bandConcert.update({
     where: { id },
     data: {
@@ -338,7 +348,7 @@ export async function updateConcert(id: string, input: Partial<Omit<ConcertItem,
       city: input.city,
       startsAt: input.startsAt ? new Date(input.startsAt) : undefined,
       priceEur: input.priceEur,
-      ticketUrl: input.ticketUrl,
+      ticketUrl: normalizedTicketUrl,
       isActive: input.isActive
     }
   });
@@ -427,6 +437,26 @@ export async function registerLiveSubscription(input: {
 
 export async function listLiveSubscriptions(): Promise<LiveSubscriptionItem[]> {
   const subscriptions = await prisma.bandLiveSubscription.findMany({
+    orderBy: { createdAt: 'desc' },
+    include: { live: true }
+  });
+
+  return subscriptions.map((item) => ({
+    id: item.id,
+    liveId: item.liveId,
+    liveTitle: item.live.title,
+    liveStartsAt: item.live.startsAt.toISOString(),
+    userEmail: item.userEmail,
+    userName: item.userName || '',
+    source: item.source,
+    createdAt: item.createdAt.toISOString()
+  }));
+}
+
+export async function listLiveSubscriptionsByUserEmail(userEmail: string): Promise<LiveSubscriptionItem[]> {
+  const normalizedEmail = userEmail.trim().toLowerCase();
+  const subscriptions = await prisma.bandLiveSubscription.findMany({
+    where: { userEmail: normalizedEmail },
     orderBy: { createdAt: 'desc' },
     include: { live: true }
   });

@@ -78,6 +78,13 @@ function ensureStripeOwnership(ownerEmail: string, targetEmail?: string | null) 
   }
 }
 
+function maybeEnsureStripeOwnership(ownerEmail: string | null, targetEmail?: string | null) {
+  if (!ownerEmail) {
+    return;
+  }
+  ensureStripeOwnership(ownerEmail, targetEmail);
+}
+
 export async function getOrCreateCustomerByEmail(email: string): Promise<string> {
   const stripe = getStripeClient();
   const normalizedEmail = email.trim().toLowerCase();
@@ -250,8 +257,8 @@ export async function createStripeCheckoutSession(input: StripeCheckoutInput): P
   };
 }
 
-export async function getStripeInvoiceByPaymentIntentId(
-  ownerEmail: string,
+async function getStripeInvoiceByPaymentIntentIdInternal(
+  ownerEmail: string | null,
   paymentIntentId: string
 ): Promise<StripeInvoiceSummary> {
   const stripe = getStripeClient();
@@ -267,7 +274,7 @@ export async function getStripeInvoiceByPaymentIntentId(
         ? intent.customer.email
         : null;
   const receiptEmail = intent.receipt_email || null;
-  ensureStripeOwnership(ownerEmail, customerEmail || receiptEmail);
+  maybeEnsureStripeOwnership(ownerEmail, customerEmail || receiptEmail);
 
   const charge = typeof intent.latest_charge === 'string' ? null : intent.latest_charge;
 
@@ -286,8 +293,21 @@ export async function getStripeInvoiceByPaymentIntentId(
   };
 }
 
-export async function getStripeInvoiceBySessionId(
+export async function getStripeInvoiceByPaymentIntentId(
   ownerEmail: string,
+  paymentIntentId: string
+): Promise<StripeInvoiceSummary> {
+  return getStripeInvoiceByPaymentIntentIdInternal(ownerEmail, paymentIntentId);
+}
+
+export async function getStripeInvoiceByPaymentIntentIdForAdmin(
+  paymentIntentId: string
+): Promise<StripeInvoiceSummary> {
+  return getStripeInvoiceByPaymentIntentIdInternal(null, paymentIntentId);
+}
+
+async function getStripeInvoiceBySessionIdInternal(
+  ownerEmail: string | null,
   sessionId: string
 ): Promise<StripeInvoiceSummary> {
   const stripe = getStripeClient();
@@ -302,7 +322,7 @@ export async function getStripeInvoiceBySessionId(
       : session.customer && !('deleted' in session.customer)
         ? session.customer.email
         : null);
-  ensureStripeOwnership(ownerEmail, sessionEmail);
+  maybeEnsureStripeOwnership(ownerEmail, sessionEmail);
 
   if (!session.payment_intent) {
     throw new Error('Session has no payment intent');
@@ -311,7 +331,7 @@ export async function getStripeInvoiceBySessionId(
   const paymentIntentId =
     typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent.id;
 
-  const summary = await getStripeInvoiceByPaymentIntentId(ownerEmail, paymentIntentId);
+  const summary = await getStripeInvoiceByPaymentIntentIdInternal(ownerEmail, paymentIntentId);
 
   if (session.invoice) {
     const invoiceId = typeof session.invoice === 'string' ? session.invoice : session.invoice.id;
@@ -321,4 +341,17 @@ export async function getStripeInvoiceBySessionId(
   }
 
   return summary;
+}
+
+export async function getStripeInvoiceBySessionId(
+  ownerEmail: string,
+  sessionId: string
+): Promise<StripeInvoiceSummary> {
+  return getStripeInvoiceBySessionIdInternal(ownerEmail, sessionId);
+}
+
+export async function getStripeInvoiceBySessionIdForAdmin(
+  sessionId: string
+): Promise<StripeInvoiceSummary> {
+  return getStripeInvoiceBySessionIdInternal(null, sessionId);
 }

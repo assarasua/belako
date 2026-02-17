@@ -469,6 +469,39 @@
   gap: 6px;
 }
 
+.ticketing-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.ticketing-badge {
+  width: fit-content;
+  border-radius: 999px;
+  border: 1px solid;
+  padding: 0.16rem 0.46rem;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.ticketing-badge.is-belako {
+  border-color: rgba(255, 170, 225, 0.82);
+  color: #ffd8ef;
+  background: rgba(185, 35, 112, 0.34);
+}
+
+.ticketing-badge.is-external {
+  border-color: rgba(139, 202, 255, 0.85);
+  color: #d9efff;
+  background: rgba(16, 74, 125, 0.35);
+}
+
+.buy-ticket-cta {
+  background: linear-gradient(90deg, #f05fae, #f28ec2);
+  border-color: rgba(255, 168, 224, 0.9);
+  color: #25091f;
+}
+
 .sheet {
   position: sticky;
   bottom: 5.2rem;
@@ -665,6 +698,19 @@ details p {
   color: #ffd7ee;
   border-color: rgba(255, 177, 226, 0.86);
   background: rgba(255, 145, 210, 0.24);
+}
+
+.danger-btn {
+  color: #ffb4d4;
+  border-color: rgba(255, 106, 175, 0.7);
+  background: rgba(153, 22, 77, 0.24);
+}
+
+.danger-btn:hover,
+.danger-btn:focus-visible {
+  color: #ffe0ef;
+  border-color: rgba(255, 147, 205, 0.9);
+  background: rgba(180, 34, 95, 0.38);
 }
 
 .history-tag {
