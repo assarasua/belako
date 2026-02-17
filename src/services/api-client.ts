@@ -14,7 +14,11 @@ export type ApiResult<T> = {
   error?: string;
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const RAW_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+const DEFAULT_API_BASE_URL = import.meta.env.PROD
+  ? 'https://api.belako.bizkardolab.eu'
+  : 'http://localhost:4000';
+const API_BASE_URL = (RAW_API_BASE_URL && RAW_API_BASE_URL.length > 0 ? RAW_API_BASE_URL : DEFAULT_API_BASE_URL).replace(/\/$/, '');
 const AUTH_TOKEN_KEY = 'belako_fan_token';
 const AUTH_EMAIL_KEY = 'belako_fan_email';
 const PROFILE_STORAGE_KEY = 'belako_profile_settings_v1';
