@@ -95,7 +95,7 @@ fidelity-app/
 | `YOUTUBE_API_KEY` | Optional | `AIza...` | Enables `/catalog/videos` |
 | `YOUTUBE_CHANNEL_HANDLE` | Optional | `@Belako` | Defaults to `@Belako` |
 | `CLIENT_URL` | Optional | `http://localhost:5173` | Legacy compatibility var |
-| `CORS_ALLOWED_ORIGINS` | Recommended | `http://localhost:5173,http://localhost:5174,https://belako.bizkardolab.eu` | Extra allowed origins |
+| `CORS_ALLOWED_ORIGINS` | Recommended | `http://localhost:5173,http://localhost:5174,https://app.yourdomain.com,https://dashboard.yourdomain.com` | Extra allowed origins |
 | `BAND_ALLOWED_EMAILS` | Optional | `owner@yourdomain.com,manager@yourdomain.com` | Comma-separated dashboard allowlist |
 | `ALLOW_ALL_DASHBOARD_EMAILS` | Optional | `true` / `false` | Set `true` for open access |
 
@@ -205,7 +205,7 @@ Pass criteria:
 ## Fan App (GitHub Pages)
 - Build from `main` via `.github/workflows/pages.yml`.
 - Artifact: `dist/`.
-- Custom domain: `belako.bizkardolab.eu`.
+- Custom domain: `app.yourdomain.com`.
 
 Manual alternative:
 
@@ -224,7 +224,7 @@ npm run deploy:branch
 - Project root/path: `dashboard/`
 - Build command: `npm ci && npm run build`
 - Output directory: `dist`
-- Custom domain (example): `dashboard.belako.bizkardolab.eu`
+- Custom domain (example): `dashboard.yourdomain.com`
 
 ## 10) CI/CD Notes
 
@@ -245,7 +245,7 @@ Rollup optional dependency note:
 Symptom: CORS/Private Network errors in browser.
 
 Fix:
-- Set `VITE_API_BASE_URL=https://api.belako.bizkardolab.eu` in production build.
+- Set `VITE_API_BASE_URL=https://api.yourdomain.com` in production build.
 - Redeploy frontend.
 
 ## Google SSO origin mismatch
@@ -255,8 +255,8 @@ Fix:
 - In Google Cloud Console, add all exact origins:
   - `http://localhost:5173`
   - `http://localhost:5174`
-  - `https://belako.bizkardolab.eu`
-  - `https://dashboard.belako.bizkardolab.eu`
+  - `https://app.yourdomain.com`
+  - `https://dashboard.yourdomain.com`
 - Ensure same `GOOGLE_CLIENT_ID` in backend and both frontends.
 
 ## Missing Rollup Linux binary in CI
