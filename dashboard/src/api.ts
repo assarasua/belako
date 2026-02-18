@@ -149,7 +149,23 @@ export type StripeInvoiceSummary = {
   customerName?: string;
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+const RAW_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+const RUNTIME_HOSTNAME =
+  typeof window !== 'undefined' && window.location?.hostname ? window.location.hostname : '';
+const IS_LOCAL_RUNTIME = ['localhost', '127.0.0.1'].includes(RUNTIME_HOSTNAME);
+const PRODUCTION_API_BASE_URL = 'https://api.belako.bizkardolab.eu';
+const LOCAL_API_BASE_URL = 'http://localhost:4000';
+const CONFIGURED_API_BASE_URL =
+  RAW_API_BASE_URL && RAW_API_BASE_URL.length > 0
+    ? RAW_API_BASE_URL
+    : IS_LOCAL_RUNTIME
+      ? LOCAL_API_BASE_URL
+      : PRODUCTION_API_BASE_URL;
+const IS_LOOPBACK_CONFIGURED =
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(CONFIGURED_API_BASE_URL);
+const API_BASE_URL = (
+  !IS_LOCAL_RUNTIME && IS_LOOPBACK_CONFIGURED ? PRODUCTION_API_BASE_URL : CONFIGURED_API_BASE_URL
+).replace(/\/$/, '');
 const TOKEN_KEY = 'belako_fan_token';
 
 type ApiResult<T> = {
