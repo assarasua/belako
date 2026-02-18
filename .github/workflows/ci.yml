@@ -14,6 +14,11 @@ jobs:
           node-version: 20
       - run: npm ci --include=optional
         working-directory: .
+      - name: Ensure Rollup Linux binary
+        run: |
+          if [ ! -d "node_modules/@rollup/rollup-linux-x64-gnu" ]; then
+            npm i --no-save @rollup/rollup-linux-x64-gnu@4.57.1
+          fi
       - name: Validate required frontend env
         run: |
           if [ -z "${VITE_GOOGLE_CLIENT_ID}" ]; then
