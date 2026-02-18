@@ -12,7 +12,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm ci
+      - run: npm ci --include=optional
         working-directory: .
       - name: Validate required frontend env
         run: |
@@ -35,7 +35,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm ci
+      - run: npm ci --include=optional
         working-directory: backend
       - run: npm run build
         working-directory: backend
