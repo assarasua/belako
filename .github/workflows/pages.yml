@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - run: npm ci --include=optional
       - name: Validate required frontend env
         run: |
           if [ -z "${VITE_GOOGLE_CLIENT_ID}" ]; then
