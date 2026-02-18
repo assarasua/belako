@@ -87,13 +87,13 @@ fidelity-app/
 | Variable | Required | Example | Notes |
 |---|---|---|---|
 | `PORT` | No | `4000` | API port (defaults to 4000) |
-| `DATABASE_URL` | Yes | `postgresql://user:pass@localhost:5432/fidelity` | Prisma DB connection |
+| `DATABASE_URL` | Yes | `postgresql://<db_user>:<db_password>@<db_host>:5432/<db_name>` | Prisma DB connection |
 | `JWT_SECRET` | Yes | `replace-with-strong-random-secret` | JWT signing key |
 | `GOOGLE_CLIENT_ID` | Yes | `123...apps.googleusercontent.com` | Must match FE client ID |
 | `STRIPE_SECRET_KEY` | Yes (commerce) | `your_stripe_secret_key` | Server-side Stripe key |
 | `STRIPE_PUBLISHABLE_KEY` | Yes (commerce) | `your_stripe_publishable_key` | Returned to frontend config route |
 | `YOUTUBE_API_KEY` | Optional | `AIza...` | Enables `/catalog/videos` |
-| `YOUTUBE_CHANNEL_HANDLE` | Optional | `@Belako` | Defaults to `@Belako` |
+| `YOUTUBE_CHANNEL_HANDLE` | Optional | `@your-channel-handle` | YouTube channel handle for catalog videos |
 | `CLIENT_URL` | Optional | `http://localhost:5173` | Legacy compatibility var |
 | `CORS_ALLOWED_ORIGINS` | Recommended | `http://localhost:5173,http://localhost:5174,https://app.yourdomain.com,https://dashboard.yourdomain.com` | Extra allowed origins |
 | `BAND_ALLOWED_EMAILS` | Optional | `owner@yourdomain.com,manager@yourdomain.com` | Comma-separated dashboard allowlist |
@@ -103,9 +103,9 @@ fidelity-app/
 
 ```env
 PORT=4000
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/fidelity
+DATABASE_URL=postgresql://<db_user>:<db_password>@localhost:5432/<db_name>
 JWT_SECRET=replace-with-strong-secret
-GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
 STRIPE_SECRET_KEY=your_stripe_secret_key
 STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
@@ -174,9 +174,9 @@ npm run users:migrate
 ```
 
 ### Common `DATABASE_URL` pitfall
-If you run locally, do **not** use an internal Railway hostname like `postgres.railway.internal` from your laptop. Use either:
+If you run locally, do **not** use private/internal DB hostnames that are only reachable inside a cloud network. Use either:
 - local Postgres URL (`localhost:5432`), or
-- Railway **public** connection string.
+- a public database connection string reachable from your machine.
 
 ## 8) Build & Quality Checks
 
@@ -214,7 +214,7 @@ cd .
 npm run deploy:branch
 ```
 
-## Backend (Railway)
+## Backend (PaaS / Container Host)
 - Service root: `backend/`
 - Start command: `npm run start` (or `node dist/index.js`)
 - Required env vars: see backend table above.
@@ -309,4 +309,4 @@ kill <PID>
 
 - Split docs into `/docs/` playbooks (runbook, deployment, incidents).
 - Add automated smoke tests against `/health`, `/ready`, and key catalog endpoints.
-- Add release checklist for Pages + Railway + Cloudflare.
+- Add release checklist for frontend host + backend host + dashboard host.
