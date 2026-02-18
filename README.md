@@ -11,12 +11,12 @@ This README is focused on **developer onboarding + operations**.
 
 This repository contains three runnable apps that work together:
 
-- Fan app (`/Users/axi/Documents/fidelity-app`)
+- Fan app (`.`)
   - React + Vite frontend for fans (onboarding, home, concerts, store, rewards, profile).
-- Backend API (`/Users/axi/Documents/fidelity-app/backend`)
+- Backend API (`./backend`)
   - Node.js + Express + Prisma + PostgreSQL.
   - Source of truth for auth, content catalog, commerce and dashboard CRUD.
-- Dashboard (`/Users/axi/Documents/fidelity-app/dashboard`)
+- Dashboard (`./dashboard`)
   - React + Vite admin panel for band operations (store items, concerts, lives, rewards, sales/users).
 
 High-level data flow:
@@ -68,21 +68,21 @@ fidelity-app/
 
 ## 5) Environment Variables
 
-## Fan App (`/Users/axi/Documents/fidelity-app/.env`)
+## Fan App (`./.env`)
 
 | Variable | Required | Example | Notes |
 |---|---|---|---|
 | `VITE_API_BASE_URL` | Yes | `http://localhost:4000` | API base URL used by frontend |
 | `VITE_GOOGLE_CLIENT_ID` | Yes | `123...apps.googleusercontent.com` | Google GIS client ID |
 
-## Dashboard (`/Users/axi/Documents/fidelity-app/dashboard/.env`)
+## Dashboard (`./dashboard/.env`)
 
 | Variable | Required | Example | Notes |
 |---|---|---|---|
 | `VITE_API_BASE_URL` | Yes | `http://localhost:4000` | API base URL used by dashboard |
 | `VITE_GOOGLE_CLIENT_ID` | Yes | `123...apps.googleusercontent.com` | Google GIS client ID |
 
-## Backend (`/Users/axi/Documents/fidelity-app/backend/.env`)
+## Backend (`./backend/.env`)
 
 | Variable | Required | Example | Notes |
 |---|---|---|---|
@@ -90,13 +90,13 @@ fidelity-app/
 | `DATABASE_URL` | Yes | `postgresql://user:pass@localhost:5432/fidelity` | Prisma DB connection |
 | `JWT_SECRET` | Yes | `replace-with-strong-random-secret` | JWT signing key |
 | `GOOGLE_CLIENT_ID` | Yes | `123...apps.googleusercontent.com` | Must match FE client ID |
-| `STRIPE_SECRET_KEY` | Yes (commerce) | `sk_test_...` | Server-side Stripe key |
-| `STRIPE_PUBLISHABLE_KEY` | Yes (commerce) | `pk_test_...` | Returned to frontend config route |
+| `STRIPE_SECRET_KEY` | Yes (commerce) | `your_stripe_secret_key` | Server-side Stripe key |
+| `STRIPE_PUBLISHABLE_KEY` | Yes (commerce) | `your_stripe_publishable_key` | Returned to frontend config route |
 | `YOUTUBE_API_KEY` | Optional | `AIza...` | Enables `/catalog/videos` |
 | `YOUTUBE_CHANNEL_HANDLE` | Optional | `@Belako` | Defaults to `@Belako` |
 | `CLIENT_URL` | Optional | `http://localhost:5173` | Legacy compatibility var |
 | `CORS_ALLOWED_ORIGINS` | Recommended | `http://localhost:5173,http://localhost:5174,https://belako.bizkardolab.eu` | Extra allowed origins |
-| `BAND_ALLOWED_EMAILS` | Optional | `assarasua@gmail.com` | Dashboard allowlist |
+| `BAND_ALLOWED_EMAILS` | Optional | `owner@yourdomain.com,manager@yourdomain.com` | Comma-separated dashboard allowlist |
 | `ALLOW_ALL_DASHBOARD_EMAILS` | Optional | `true` / `false` | Set `true` for open access |
 
 ### Minimal backend example
@@ -106,8 +106,8 @@ PORT=4000
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/fidelity
 JWT_SECRET=replace-with-strong-secret
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_SECRET_KEY=your_stripe_secret_key
+STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
 ```
 
@@ -118,7 +118,7 @@ Start services in this order:
 ### 1) Backend
 
 ```bash
-cd /Users/axi/Documents/fidelity-app/backend
+cd backend
 npm install
 npm run db:generate
 npm run db:push
@@ -129,7 +129,7 @@ npm run dev
 ### 2) Fan App
 
 ```bash
-cd /Users/axi/Documents/fidelity-app
+cd .
 npm install
 npm run dev -- --host 0.0.0.0 --port 5173
 ```
@@ -137,7 +137,7 @@ npm run dev -- --host 0.0.0.0 --port 5173
 ### 3) Dashboard
 
 ```bash
-cd /Users/axi/Documents/fidelity-app/dashboard
+cd dashboard
 npm install
 npm run dev -- --host 0.0.0.0 --port 5174
 ```
@@ -159,7 +159,7 @@ curl http://localhost:4000/ready
 First-time backend setup:
 
 ```bash
-cd /Users/axi/Documents/fidelity-app/backend
+cd backend
 npm run db:generate
 npm run db:push
 npm run db:seed
@@ -183,7 +183,7 @@ If you run locally, do **not** use an internal Railway hostname like `postgres.r
 ### Frontend
 
 ```bash
-cd /Users/axi/Documents/fidelity-app
+cd .
 npm run build
 node scripts/check-frontend-budget.mjs
 ```
@@ -191,7 +191,7 @@ node scripts/check-frontend-budget.mjs
 ### Backend
 
 ```bash
-cd /Users/axi/Documents/fidelity-app/backend
+cd backend
 npm run build
 node scripts/check-startup-sanity.mjs
 ```
@@ -210,7 +210,7 @@ Pass criteria:
 Manual alternative:
 
 ```bash
-cd /Users/axi/Documents/fidelity-app
+cd .
 npm run deploy:branch
 ```
 
@@ -229,8 +229,8 @@ npm run deploy:branch
 ## 10) CI/CD Notes
 
 Workflows:
-- CI: `/Users/axi/Documents/fidelity-app/.github/workflows/ci.yml`
-- Pages deploy: `/Users/axi/Documents/fidelity-app/.github/workflows/pages.yml`
+- CI: `./.github/workflows/ci.yml`
+- Pages deploy: `./.github/workflows/pages.yml`
 
 Secrets in GitHub Actions:
 - `VITE_GOOGLE_CLIENT_ID` is required by frontend/page builds.
@@ -272,7 +272,7 @@ Symptom: `@prisma/client did not initialize yet`.
 Fix:
 
 ```bash
-cd /Users/axi/Documents/fidelity-app/backend
+cd backend
 npm run db:generate
 npm run build
 ```
