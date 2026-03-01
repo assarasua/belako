@@ -112,7 +112,6 @@ export function AuthGate({ model }: { model: FidelityModel }) {
         <div className="auth-icon-row" aria-hidden="true">
           <span className="auth-icon">CONCIERTOS</span>
           <span className="auth-icon">TIENDA</span>
-          <span className="auth-icon">JOURNEY</span>
         </div>
 
         <article className="auth-feature-list">
@@ -120,7 +119,7 @@ export function AuthGate({ model }: { model: FidelityModel }) {
           <ul>
             <li>Acceso rápido a directos y conciertos.</li>
             <li>Checkout en euros con métodos guardados.</li>
-            <li>Progreso por tiers: Fan, Super, Ultra, God.</li>
+            <li>Estatus de fan: Fan, Super, Ultra, God.</li>
           </ul>
         </article>
 
