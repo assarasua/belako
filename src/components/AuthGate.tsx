@@ -112,6 +112,7 @@ export function AuthGate({ model }: { model: FidelityModel }) {
         <div className="auth-icon-row" aria-hidden="true">
           <span className="auth-icon">CONCIERTOS</span>
           <span className="auth-icon">TIENDA</span>
+          <span className="auth-icon">FAN ZONE</span>
         </div>
 
         <article className="auth-feature-list">
