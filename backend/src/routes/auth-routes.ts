@@ -148,7 +148,7 @@ authRoutes.post('/google', async (req, res) => {
     return;
   }
 
-  if (!env.googleClientId) {
+  if (!env.googleClientIds.length) {
     res.status(500).json({ error: 'Google SSO no está configurado en el backend (GOOGLE_CLIENT_ID).' });
     return;
   }
@@ -171,7 +171,7 @@ authRoutes.post('/google', async (req, res) => {
       return;
     }
 
-    if (payload.aud !== env.googleClientId) {
+    if (!payload.aud || !env.googleClientIds.includes(payload.aud)) {
       res.status(401).json({ error: 'Google id_token no corresponde al cliente configurado.' });
       return;
     }

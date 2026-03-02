@@ -14,6 +14,16 @@ for (const candidate of envCandidates) {
   }
 }
 
+function parseCsv(value: string | undefined): string[] {
+  return (value || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+const primaryGoogleClientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
+const googleClientIds = Array.from(new Set([primaryGoogleClientId, ...parseCsv(process.env.GOOGLE_CLIENT_IDS)]));
+
 export const env = {
   port: Number(process.env.PORT || 4000),
   jwtSecret: process.env.JWT_SECRET || 'dev-secret',
@@ -27,7 +37,8 @@ export const env = {
   youtubeApiKey: process.env.YOUTUBE_API_KEY || '',
   youtubeChannelHandle: process.env.YOUTUBE_CHANNEL_HANDLE || '@Belako',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
-  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  googleClientId: primaryGoogleClientId,
+  googleClientIds,
   bandAllowedEmails: (process.env.BAND_ALLOWED_EMAILS || '')
     .split(',')
     .map((entry) => entry.trim().toLowerCase())
