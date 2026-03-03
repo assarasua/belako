@@ -55,7 +55,9 @@ function loadGoogleScript(): Promise<void> {
 
 export function AuthGate({ model }: { model: FidelityModel }) {
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
-  const clientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+  const clientId = (
+    import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+  ).trim();
   const canRenderGoogle = Boolean(clientId);
 
   useEffect(() => {
@@ -128,7 +130,9 @@ export function AuthGate({ model }: { model: FidelityModel }) {
           {canRenderGoogle ? <div className="auth-google-button" ref={googleButtonRef} /> : null}
 
           {!canRenderGoogle ? (
-            <p className="error-text">Falta configurar `VITE_GOOGLE_CLIENT_ID` para habilitar Google SSO.</p>
+            <p className="error-text">
+              Falta configurar `VITE_GOOGLE_OAUTH_CLIENT_ID` (o `VITE_GOOGLE_CLIENT_ID`) para habilitar Google SSO.
+            </p>
           ) : null}
 
           {model.authError ? <p className="error-text">{model.authError}</p> : null}

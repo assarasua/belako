@@ -73,14 +73,16 @@ fidelity-app/
 | Variable | Required | Example | Notes |
 |---|---|---|---|
 | `VITE_API_BASE_URL` | Yes | `http://localhost:4000` | API base URL used by frontend |
-| `VITE_GOOGLE_CLIENT_ID` | Yes | `123...apps.googleusercontent.com` | Google GIS client ID |
+| `VITE_GOOGLE_OAUTH_CLIENT_ID` | Yes | `123...apps.googleusercontent.com` | Google GIS client ID (preferred) |
+| `VITE_GOOGLE_CLIENT_ID` | No | `123...apps.googleusercontent.com` | Legacy fallback name |
 
 ## Dashboard (`./dashboard/.env`)
 
 | Variable | Required | Example | Notes |
 |---|---|---|---|
 | `VITE_API_BASE_URL` | Yes | `http://localhost:4000` | API base URL used by dashboard |
-| `VITE_GOOGLE_CLIENT_ID` | Yes | `123...apps.googleusercontent.com` | Google GIS client ID |
+| `VITE_GOOGLE_OAUTH_CLIENT_ID` | Yes | `123...apps.googleusercontent.com` | Google GIS client ID (preferred) |
+| `VITE_GOOGLE_CLIENT_ID` | No | `123...apps.googleusercontent.com` | Legacy fallback name |
 
 ## Backend (`./backend/.env`)
 
@@ -233,7 +235,8 @@ Workflows:
 - Pages deploy: `./.github/workflows/pages.yml`
 
 Secrets in GitHub Actions:
-- `VITE_GOOGLE_CLIENT_ID` is required by frontend/page builds.
+- `VITE_GOOGLE_OAUTH_CLIENT_ID` is preferred for frontend/page builds.
+- `VITE_GOOGLE_CLIENT_ID` is still accepted as fallback during migration.
 
 Rollup optional dependency note:
 - Linux builds can fail with missing `@rollup/rollup-linux-x64-gnu` due to npm optional-deps behavior.

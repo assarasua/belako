@@ -21,16 +21,18 @@ jobs:
           fi
       - name: Validate required frontend env
         run: |
-          if [ -z "${VITE_GOOGLE_CLIENT_ID}" ]; then
-            echo "Missing required secret: VITE_GOOGLE_CLIENT_ID"
+          if [ -z "${VITE_GOOGLE_OAUTH_CLIENT_ID}" ] && [ -z "${VITE_GOOGLE_CLIENT_ID}" ]; then
+            echo "Missing required secret: VITE_GOOGLE_OAUTH_CLIENT_ID (or VITE_GOOGLE_CLIENT_ID)"
             exit 1
           fi
         env:
+          VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
       - run: npm run build
         working-directory: .
         env:
           VITE_API_BASE_URL: https://api.belako.bizkardolab.eu
+          VITE_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
 
   backend:

@@ -57,7 +57,7 @@ declare global {
 type Tab = 'store' | 'concerts' | 'lives' | 'rewards' | 'sales' | 'audience';
 type SalesScope = 'all' | 'store' | 'concert_sales' | 'concert_registrations';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 const emptyStoreDraft: Omit<StoreItem, 'id'> = {
   name: '',
@@ -255,7 +255,7 @@ export function App() {
   function runGoogleLogin() {
     setAuthError('');
     if (!GOOGLE_CLIENT_ID) {
-      setAuthError('Falta VITE_GOOGLE_CLIENT_ID para iniciar sesión con Google.');
+      setAuthError('Falta VITE_GOOGLE_OAUTH_CLIENT_ID (o VITE_GOOGLE_CLIENT_ID) para iniciar sesión con Google.');
       return;
     }
     if (!window.google?.accounts?.id) {
