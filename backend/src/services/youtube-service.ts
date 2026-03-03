@@ -140,7 +140,10 @@ export async function resolveChannelIdByHandle(handle = env.youtubeChannelHandle
   }
   let channelId = payload.items?.[0]?.id;
   if (!channelId) {
-    channelId = await resolveChannelIdBySearch(handle);
+    const fallbackChannelId = await resolveChannelIdBySearch(handle);
+    if (fallbackChannelId) {
+      channelId = fallbackChannelId;
+    }
   }
   if (!channelId) {
     throw new Error('YOUTUBE_CHANNEL_NOT_FOUND');
