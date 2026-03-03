@@ -143,8 +143,6 @@ export function App() {
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
   const [rewardEditDraft, setRewardEditDraft] = useState<Omit<RewardConfigItem, 'id'>>(emptyRewardDraft);
 
-  const artistDenied = session && session.role !== 'artist';
-
   function handleStoreImageUpload(
     file: File | undefined,
     onSuccess: (imageUrl: string) => void,
@@ -458,26 +456,6 @@ export function App() {
           <p>Gestiona tienda, conciertos, directos y recompensas dinámicas.</p>
           <button onClick={runGoogleLogin}>Entrar con Google</button>
           {authError ? <p className="error">{authError}</p> : null}
-        </section>
-      </main>
-    );
-  }
-
-  if (artistDenied) {
-    return (
-      <main className="dashboard-auth-shell">
-        <section className="dashboard-auth-card">
-          <h1>No autorizado</h1>
-          <p>Tu cuenta ({session.email}) no está en la allowlist de banda.</p>
-          <button
-            className="ghost"
-            onClick={() => {
-              logout();
-              setSession(null);
-            }}
-          >
-            Cerrar sesión
-          </button>
         </section>
       </main>
     );

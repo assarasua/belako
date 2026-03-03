@@ -35,12 +35,9 @@ function fromPrismaRole(role: string | undefined): AppRole {
   return role === 'ARTIST' ? 'artist' : 'fan';
 }
 
-function resolveRoleForGoogleEmail(email: string, target: 'app' | 'dashboard'): AppRole {
-  if (target === 'dashboard' && env.allowAllDashboardEmails) {
-    return 'artist';
-  }
-  const normalized = email.trim().toLowerCase();
-  return env.bandAllowedEmails.includes(normalized) ? 'artist' : 'fan';
+function resolveRoleForGoogleEmail(_email: string, _target: 'app' | 'dashboard'): AppRole {
+  // Unified policy: Google-authenticated users are treated as fan by default.
+  return 'fan';
 }
 
 async function upsertAuthUser(input: {
@@ -211,7 +208,7 @@ authRoutes.post('/google', async (req, res) => {
         authProvider: 'google',
         name: payload.name,
         picture: payload.picture,
-        canAccessDashboard: role === 'artist',
+        canAccessDashboard: true,
         isNewUserHint: isNewUser,
         onboardingCompleted: user.onboardingCompleted
       }
@@ -231,7 +228,8 @@ authRoutes.get('/session', requireAuth, async (req, res) => {
       authProvider: (existing?.authProvider as AuthProvider | undefined) || req.authUser?.authProvider || 'email',
       name: existing?.name || req.authUser?.name || '',
       picture: existing?.picture || req.authUser?.picture || '',
-      canAccessDashboard: (existing ? fromPrismaRole(existing.role) : req.authUser?.role) === 'artist',
+      canAccessDashboard:
+        ((existing?.authProvider as AuthProvider | undefined) || req.authUser?.authProvider) === 'google',
       isRegistered: Boolean(existing),
       onboardingCompleted: existing?.onboardingCompleted ?? false,
       lastLoginAt: existing?.lastLoginAt?.toISOString() ?? null
