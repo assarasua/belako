@@ -35,6 +35,7 @@ export const env = {
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
   stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
   youtubeApiKey: process.env.YOUTUBE_API_KEY || '',
+  youtubeChannelId: process.env.YOUTUBE_CHANNEL_ID || '',
   youtubeChannelHandle: process.env.YOUTUBE_CHANNEL_HANDLE || '@Belako',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
   googleClientId: primaryGoogleClientId,

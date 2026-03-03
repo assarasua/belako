@@ -83,6 +83,34 @@ async function fetchYouTubeJson<T>(url: string): Promise<YoutubeListResponse<T>>
   return json;
 }
 
+async function resolveChannelIdBySearch(handle: string): Promise<string | null> {
+  const normalized = normalizeHandle(handle);
+  const url = new URL('https://www.googleapis.com/youtube/v3/search');
+  url.searchParams.set('part', 'snippet');
+  url.searchParams.set('type', 'channel');
+  url.searchParams.set('q', normalized);
+  url.searchParams.set('maxResults', '5');
+  url.searchParams.set('key', env.youtubeApiKey);
+
+  const payload = await fetchYouTubeJson<{
+    id?: { channelId?: string };
+    snippet?: { channelTitle?: string };
+  }>(url.toString());
+
+  if (isQuotaError(payload)) {
+    throw new Error('YOUTUBE_QUOTA_EXCEEDED');
+  }
+
+  const exact = (payload.items || []).find((item) => {
+    const title = (item.snippet?.channelTitle || '').trim().toLowerCase();
+    return title === normalized.toLowerCase();
+  });
+  if (exact?.id?.channelId) {
+    return exact.id.channelId;
+  }
+  return payload.items?.[0]?.id?.channelId || null;
+}
+
 export async function resolveChannelIdByHandle(handle = env.youtubeChannelHandle): Promise<string> {
   if (channelCache && channelCache.expiresAt > Date.now()) {
     return channelCache.value;
@@ -90,6 +118,14 @@ export async function resolveChannelIdByHandle(handle = env.youtubeChannelHandle
 
   if (!env.youtubeApiKey) {
     throw new Error('MISSING_YOUTUBE_API_KEY');
+  }
+
+  if (env.youtubeChannelId.trim()) {
+    channelCache = {
+      value: env.youtubeChannelId.trim(),
+      expiresAt: Date.now() + CACHE_TTL_MS
+    };
+    return channelCache.value;
   }
 
   const normalized = normalizeHandle(handle);
@@ -102,7 +138,10 @@ export async function resolveChannelIdByHandle(handle = env.youtubeChannelHandle
   if (isQuotaError(payload)) {
     throw new Error('YOUTUBE_QUOTA_EXCEEDED');
   }
-  const channelId = payload.items?.[0]?.id;
+  let channelId = payload.items?.[0]?.id;
+  if (!channelId) {
+    channelId = await resolveChannelIdBySearch(handle);
+  }
   if (!channelId) {
     throw new Error('YOUTUBE_CHANNEL_NOT_FOUND');
   }
