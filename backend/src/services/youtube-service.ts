@@ -26,6 +26,18 @@ type CachedValue<T> = {
   value: T;
 };
 
+export class YouTubeApiError extends Error {
+  readonly status: number;
+  readonly reason?: string;
+
+  constructor(message: string, status = 502, reason?: string) {
+    super(message);
+    this.name = 'YouTubeApiError';
+    this.status = status;
+    this.reason = reason;
+  }
+}
+
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const cache = new Map<string, CachedValue<{ items: BelakoVideoDto[]; nextPageToken?: string }>>();
 let channelCache: CachedValue<string> | null = null;
@@ -78,7 +90,11 @@ async function fetchYouTubeJson<T>(url: string): Promise<YoutubeListResponse<T>>
   const response = await fetch(url);
   const json = (await response.json()) as YoutubeListResponse<T>;
   if (!response.ok) {
-    throw new Error(json.error?.message || 'YouTube API request failed');
+    throw new YouTubeApiError(
+      json.error?.message || 'YouTube API request failed',
+      response.status,
+      json.error?.errors?.[0]?.reason
+    );
   }
   return json;
 }
@@ -98,7 +114,7 @@ async function resolveChannelIdBySearch(handle: string): Promise<string | null> 
   }>(url.toString());
 
   if (isQuotaError(payload)) {
-    throw new Error('YOUTUBE_QUOTA_EXCEEDED');
+    throw new YouTubeApiError('YOUTUBE_QUOTA_EXCEEDED', 429);
   }
 
   const exact = (payload.items || []).find((item) => {
@@ -117,7 +133,7 @@ export async function resolveChannelIdByHandle(handle = env.youtubeChannelHandle
   }
 
   if (!env.youtubeApiKey) {
-    throw new Error('MISSING_YOUTUBE_API_KEY');
+    throw new YouTubeApiError('MISSING_YOUTUBE_API_KEY', 503);
   }
 
   if (env.youtubeChannelId.trim()) {
@@ -136,7 +152,7 @@ export async function resolveChannelIdByHandle(handle = env.youtubeChannelHandle
 
   const payload = await fetchYouTubeJson<{ id?: string }>(url.toString());
   if (isQuotaError(payload)) {
-    throw new Error('YOUTUBE_QUOTA_EXCEEDED');
+    throw new YouTubeApiError('YOUTUBE_QUOTA_EXCEEDED', 429);
   }
   let channelId = payload.items?.[0]?.id;
   if (!channelId) {
@@ -146,7 +162,7 @@ export async function resolveChannelIdByHandle(handle = env.youtubeChannelHandle
     }
   }
   if (!channelId) {
-    throw new Error('YOUTUBE_CHANNEL_NOT_FOUND');
+    throw new YouTubeApiError('YOUTUBE_CHANNEL_NOT_FOUND', 404);
   }
 
   channelCache = {
@@ -161,7 +177,7 @@ export async function fetchChannelVideos(input?: {
   limit?: number;
 }): Promise<{ items: BelakoVideoDto[]; nextPageToken?: string }> {
   if (!env.youtubeApiKey) {
-    throw new Error('MISSING_YOUTUBE_API_KEY');
+    throw new YouTubeApiError('MISSING_YOUTUBE_API_KEY', 503);
   }
 
   const pageToken = input?.pageToken || '';
@@ -196,7 +212,7 @@ export async function fetchChannelVideos(input?: {
   }>(searchUrl.toString());
 
   if (isQuotaError(searchPayload)) {
-    throw new Error('YOUTUBE_QUOTA_EXCEEDED');
+    throw new YouTubeApiError('YOUTUBE_QUOTA_EXCEEDED', 429);
   }
 
   const searchItems = (searchPayload.items || []).filter((item) => {
@@ -230,7 +246,7 @@ export async function fetchChannelVideos(input?: {
   }>(videosUrl.toString());
 
   if (isQuotaError(videosPayload)) {
-    throw new Error('YOUTUBE_QUOTA_EXCEEDED');
+    throw new YouTubeApiError('YOUTUBE_QUOTA_EXCEEDED', 429);
   }
 
   const byId = new Map((videosPayload.items || []).map((item) => [item.id || '', item]));

@@ -6,7 +6,7 @@ import {
   listLiveSubscriptionsByUserEmail,
   registerLiveSubscription
 } from '../services/catalog-service.js';
-import { fetchChannelVideos } from '../services/youtube-service.js';
+import { fetchChannelVideos, YouTubeApiError } from '../services/youtube-service.js';
 
 export const catalogRoutes = Router();
 const liveSubscriptionSchema = z.object({
@@ -85,6 +85,18 @@ catalogRoutes.get(
       if (code === 'YOUTUBE_CHANNEL_NOT_FOUND') {
         res.status(404).json({ error: 'No se encontró el canal de YouTube configurado.' });
         return;
+      }
+      if (error instanceof YouTubeApiError) {
+        if (error.status === 401) {
+          res.status(401).json({ error: 'YouTube API key inválida o revocada.' });
+          return;
+        }
+        if (error.status === 403) {
+          res.status(403).json({
+            error: 'YouTube API bloqueada por restricciones de la clave (API restrictions/referrer/IP).'
+          });
+          return;
+        }
       }
       res.status(502).json({ error: 'No se pudieron cargar vídeos desde YouTube.' });
     }
